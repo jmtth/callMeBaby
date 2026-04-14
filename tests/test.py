@@ -1,30 +1,59 @@
 from llm_sdk import Small_LLM_Model
+import json
 
+
+def _build_token_to_id(vocab: dict) -> dict[str, int]:
+    """Return a token->id mapping from either common vocab JSON shape."""
+    # Shape A: {"!": 0, "the": 1, ...}
+    if all(isinstance(k, str) and isinstance(v, (int, str)) for k, v in vocab.items()):
+        try:
+            return {k: int(v) for k, v in vocab.items()}
+        except (TypeError, ValueError):
+            pass
+
+    # Shape B: {"0": "!", "1": "the", ...}
+    try:
+        return {v: int(k) for k, v in vocab.items()}
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Unsupported vocab format for token/id conversion") from exc
+
+def next_token_constrained(model, token_ids: list[int], allowed_ids: list[int]) -> int:
+    logits = model.get_logits_from_input_ids(token_ids)
+
+    # Mettre -inf sur tous les tokens non autorisés
+    for i in range(len(logits)):
+        if i not in allowed_ids:
+            logits[i] = float("-inf")
+
+    # Prendre le meilleur token restant
+    return logits.index(max(logits))
 
 def test_small_llm_model():
     model = Small_LLM_Model(device="cpu")
     max_res_tokens = 20
     tokens_ids = model.encode("What is the capital of France?")[0].tolist()
     response_tokens_ids: list[int] = []
-    print(f"Response France: {tokens_ids}")
 
-    for _ in range(max_res_tokens):
-        loggits = model.get_logits_from_input_ids(tokens_ids)
-        new_token_id = loggits.index(max(loggits))
+    # Charger le vocabulaire
+    vocab_path = model.get_path_to_vocab_file()
+    with open(vocab_path) as f:
+        vocab = json.load(f)
+
+    token_to_id = _build_token_to_id(vocab)
+    # Explorer ce qui nous intéresse
+    chars = ["{", "}", '"', ":", ",", " "]
+    constraint_tokens = [token_to_id[c] for c in chars if c in token_to_id]
+
+    print(f"Prompt tokens_ids: {tokens_ids}")
+
+    for i in range(max_res_tokens):
+        new_token_id = next_token_constrained(model, tokens_ids, constraint_tokens[0:i])
         tokens_ids.append(new_token_id)
         response_tokens_ids.append(new_token_id)
-        #print(f"Loggits: {loggits}")
-        print(f"Next token id: {new_token_id}")
-        response = model.decode([new_token_id])
-        print(f"Decoded response: {response}")
 
     print(f"Final response token ids: {response_tokens_ids}")
     print(f"Final response: {model.decode(response_tokens_ids)}")
 
-
-    tokens_ids = model.encode("What is the capital of Rome?")[0].tolist()
-    print(f"Response Rome: {tokens_ids}")
- 
 
 if __name__ == "__main__":
     test_small_llm_model()
