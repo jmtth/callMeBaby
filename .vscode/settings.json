@@ -1,0 +1,3 @@
+{
+  "python.analysis.extraPaths": ["./llm_sdk"]
+}
