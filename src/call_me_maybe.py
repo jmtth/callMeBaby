@@ -117,6 +117,7 @@ def test_small_llm_model():
     token_to_id = _build_token_to_id(vocab)
     
     functions_names = functions_def.list_functions_name()
+    functions_descriptions = {fn.name: fn.description for fn in functions_def.functions}
     relevant_tokens = get_filtered_vocab_for_functions(functions_names, token_to_id)
 
     current_text = ""

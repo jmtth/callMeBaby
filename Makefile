@@ -19,7 +19,7 @@ clean:
 lint:
 	@echo "Linting CallMeBaby..."
 	uv run flake8 .
-	uv run mypy . --warn-returns-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
+	uv run mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
 
 lint-strict:
 	@echo "Strict linting CallMeBaby..."
