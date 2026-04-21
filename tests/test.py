@@ -31,7 +31,7 @@ def test_small_llm_model():
     model = Small_LLM_Model(
         device="cpu",
         cache_dir="./.hf_cache",
-        local_files_only=True, # First run will download the model, then True for subsequent runs
+        local_files_only=False, # First run will download the model, then True for subsequent runs
     )
     max_res_tokens = 20
     tokens_ids = model.encode("What is the capital of France?")[0].tolist()

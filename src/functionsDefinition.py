@@ -12,7 +12,7 @@ class FunctionSchema(BaseModel):
     """Class representing a function schema."""
     name: str = Field(..., description="Name of the function")
     description: str = Field("", description="Description of the function")
-    parameters: dict[str, Parameter] = Field({}, description="Parameters of the function")
+    parameters: dict[str, Parameter] = Field({}, description="Parameters")
 
 
 class FunctionsDefinition:
@@ -77,7 +77,8 @@ class FunctionsDefinition:
 
 
 def main():
-    functions_def = FunctionsDefinition.from_json("data/input/functions_definition.json")
+    functions_def = FunctionsDefinition.from_json(
+        "data/input/functions_definition.json")
     print(functions_def.list_functions_name())
     name = "fn_substitute_string_with_regex"
     print(functions_def.get_function_by_name(name))
