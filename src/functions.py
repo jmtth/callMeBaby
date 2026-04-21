@@ -40,6 +40,9 @@ class FunctionsDefinition:
 
     @classmethod
     def from_json(cls, path_to_json: str) -> "FunctionsDefinition":
+        """Load function definitions from a JSON file 
+        and return an instance of FunctionsDefinition.
+        """
         try:
             with open(path_to_json, "r") as f:
                 data = json.load(f)
@@ -75,6 +78,19 @@ class FunctionsDefinition:
         params = self.get_function_parameters_by_name(name)
         return len(params)
 
+    def get_functions_prompt(self) -> str:
+        """Return a string representation of all functions
+        in a format suitable for prompting.
+        """
+        prompt = "Here are the available functions:\n\n"
+        for func in self.functions:
+            prompt += f" - Function Name: {func.name}\n"
+            prompt += f"   Description: {func.description}\n"
+            prompt += "   Parameters:\n"
+            for param_name, param in func.parameters.items():
+                prompt += f"    - {param_name} (type: {param.type})\n"
+            prompt += "\n"
+        return prompt
 
 def main():
     functions_def = FunctionsDefinition.from_json(
