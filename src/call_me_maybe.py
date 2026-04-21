@@ -76,19 +76,22 @@ def get_allowed_tokens_for_string(
             allowed.add(t_id)
     return allowed
 
-def get_filtered_vocab_for_functions(functions_names: list[str], token_to_id: dict[str, int]) -> list[tuple[str, int]]:
+def get_filtered_vocab_for_functions(functions_names: list[str], functions_descriptions: dict[str, str], token_to_id: dict[str, int]) -> list[tuple[str, int]]:
     """Return a filtered list of (token_str, token_id) that are relevant for the function names and syntax."""
    
     syntax_tokens = ['{"', '":', ',"', '": "', '",', '}', '[', ']', '": ', ' {', 'true', 'false', 'null']
+    desciptions_token = [token for desc in functions_descriptions.values() for token in desc.split()]
+    print("Descriptions tokens:", desciptions_token)
 
     filtered_vocab = []
     for t_str, t_id in token_to_id.items():
         clean_t = t_str.replace('Ġ', ' ').replace(' ', ' ')
         is_syntax = any(syntax == clean_t for syntax in syntax_tokens)
         is_part_of_fn = any(clean_t in fn for fn in functions_names)
+        is_part_of_desc = any(clean_t in desc for desc in desciptions_token)
         is_digit = clean_t.strip().isdigit() or clean_t in [".", "-", "e"]
         
-        if is_syntax or is_part_of_fn or is_digit:
+        if is_syntax or is_part_of_fn or is_digit or is_part_of_desc:
             filtered_vocab.append((clean_t, t_id))
 
     return filtered_vocab
@@ -118,7 +121,8 @@ def test_small_llm_model():
     
     functions_names = functions_def.list_functions_name()
     functions_descriptions = {fn.name: fn.description for fn in functions_def.functions}
-    relevant_tokens = get_filtered_vocab_for_functions(functions_names, token_to_id)
+    relevant_tokens = get_filtered_vocab_for_functions(functions_names, functions_descriptions, token_to_id)
+
 
     current_text = ""
     for i in range(max_res_tokens):
