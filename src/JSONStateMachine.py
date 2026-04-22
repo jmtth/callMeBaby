@@ -1,37 +1,145 @@
 from enum import Enum, auto
-import numpy as np
-from pydantic import BaseModel, Field, ValidationError
-from typing import Dict, List, Optional
+
 
 class JSONState(Enum):
-    START = auto()           # Avant le '{'
-    OBJECT_OPEN = auto()     # Après le '{'
-    KEY_NAME = auto()        # En train de générer une clé ("prompt", "name", etc.)
-    COLON = auto()           # Après une clé, attend ':'
-    VALUE_STRING = auto()    # En train de générer une chaîne
-    VALUE_NUMBER = auto()    # En train de générer un nombre [cite: 319]
-    VALUE_OBJECT = auto()    # Pour les "parameters" [cite: 303]
-    COMMA = auto()           # Entre deux paires clé-valeur
-    END = auto()             # Après le '}' final
+    START = auto()          # {
+    PROMPT_KEY = auto()     # "prompt": "
+    PROMPT_VAL = auto()     # [Valeur du prompt]
+    NAME_KEY = auto()       # ", "name": "
+    NAME_VAL = auto()       # [Nom de la fonction]
+    PARAMS_KEY = auto()     # ", "parameters": {
+    PARAM_NAME = auto()     # "nom_du_parametre"
+    # PARAM_COLON = auto()    # :
+    # PARAM_VAL = auto()      # [Valeur selon le type]
+    # PARAM_COMMA = auto()    # ,
+    END = auto()            # }
+
 
 class JSONStateMachine:
-    def __init__(self, schema: dict, vocabulary: dict):
-        self.schema = schema
-        self.vocab = vocabulary # Charge le vocabulary.json [cite: 252, 293]
-        self.current_buffer = ""
-        # États possibles : START, IN_KEY, AFTER_KEY, IN_VALUE, etc.
-        self.state = "START" 
+    def __init__(self, model, functions_def, token_to_id):
+        self.model = model
+        self.state = JSONState.START
+        self.buffer_tokens: list[int] = []
+        self.current_text = ""
+
+        self.functions_names = functions_def.list_functions_name()
+        self.token_to_id = token_to_id
+
+        # Targets encodés
+        self.targets = {
+            JSONState.START: model.encode("{")[0].tolist(),
+            JSONState.PROMPT_KEY: model.encode('"prompt": "')[0].tolist(),
+            JSONState.NAME_KEY: model.encode('", "name": "')[0].tolist(),
+            JSONState.PARAMS_KEY: model.encode('", "parameters": {')[0].tolist(),
+            # JSONState.PARAM_COLON: model.encode(": ")[0].tolist(),
+            # JSONState.PARAM_COMMA: model.encode(", ")[0].tolist(),
+            JSONState.END: model.encode('}')[0].tolist(),
+        }
+
+        self.progress = 0
 
     def get_allowed_tokens(self) -> set[int]:
-        """
-        Analyse self.current_buffer pour déterminer les tokens valides.
-        C'est ici que réside la complexité du projet.
-        """
-        allowed_ids = set()
-        # Logique de filtrage basée sur la structure JSON et le schéma [cite: 285]
-        # Exemple : si l'état est START, seul le token '{' est autorisé.
-        return allowed_ids
+        # 1. Si on est dans une séquence fixe (JSON)
+        if self.state in self.targets:
+            target = self.targets[self.state]
 
-    def update_state(self, last_token_text: str):
-        self.current_buffer += last_token_text
-        # Mise à jour de l'état interne selon le texte ajouté
+            if self.progress < len(target):
+                return {target[self.progress]}
+        
+        # 2. Cas dynamique
+        if self.state == JSONState.NAME_VAL:
+            return self._allowed_tokens_for_function_name()
+
+        return set(range(self.token_to_id.__len__()))  # Tous les tokens sont autorisés par défaut
+    
+    def _allowed_tokens_for_function_name(self) -> set[int]:
+        allowed_tokens = set()
+        still_possible = [
+            s for s in self.functions_names
+            if s.startswith(self.current_text)
+        ]
+        for s in still_possible:
+            allowed_tokens.update(
+                self._get_allowed_tokens_for_string(
+                    s,
+                    self.current_text,
+                    self.token_to_id
+                )
+            )
+        return allowed_tokens
+
+    def _get_allowed_tokens_for_string(
+            self,
+            target_string,
+            current_generated_text,
+            token_to_id
+            ) -> set[int]:
+        """
+        Determine the next character that is expected
+        and allow tokens that start with it.
+        """
+        # Si on a déjà fini la chaîne
+        if current_generated_text == target_string:
+            return {token_to_id.get(" ")}  # Ou un token de ponctuation comme ':'
+
+        # Trouver ce qu'il reste à générer
+        remaining = target_string[len(current_generated_text):]
+
+        allowed = set()
+        for token_str, t_id in token_to_id.items():
+            # On autorise les tokens qui sont le début de ce qu'il reste à écrire
+            # Attention : gérer les espaces de début de token (ex: 'Ġ' ou ' ')
+            clean_token = token_str.replace('Ġ', ' ').replace(' ', ' ')
+            if remaining.startswith(clean_token) and clean_token != "":
+                allowed.add(t_id)
+        return allowed
+
+    def update(self, token_id: int):
+        token_text = self.model.decode([token_id])
+
+        self.buffer_tokens.append(token_id)
+        self.current_text += token_text
+
+        # 1. Gestion des séquences fixes
+        if self.state in self.targets:
+            target = self.targets[self.state]
+
+            if token_id == target[self.progress]:
+                self.progress += 1
+
+                if self.progress == len(target):
+                    self._update_state()
+                    self.current_text = ""
+                    self.progress = 0
+            else:
+                raise ValueError("Invalid token in fixed sequence")
+
+        # 2. Cas dynamique (nom de fonction)
+        elif self.state == JSONState.NAME_VAL:
+            if self.current_text in self.functions_names:
+                self._update_state()
+                self.current_text = ""
+
+    def _update_state(self):
+        if self.state == JSONState.START:
+            self.state = JSONState.PROMPT_KEY
+        elif self.state == JSONState.PROMPT_KEY:
+            self.state = JSONState.PROMPT_VAL
+        elif self.state == JSONState.PROMPT_VAL:
+            self.state = JSONState.NAME_KEY
+        elif self.state == JSONState.NAME_KEY:
+            self.state = JSONState.NAME_VAL
+        elif self.state == JSONState.NAME_VAL:
+            self.state = JSONState.PARAMS_KEY
+        # elif self.state == JSONState.PARAMS_KEY:
+        #     self.state = JSONState.PARAM_NAME
+        # elif self.state == JSONState.PARAM_NAME:
+        #     self.state = JSONState.PARAM_COLON
+        # elif self.state == JSONState.PARAM_COLON:
+        #     self.state = JSONState.PARAM_VAL
+        # elif self.state == JSONState.PARAM_VAL:
+        #     self.state = JSONState.PARAM_COMMA
+        # elif self.state == JSONState.PARAM_COMMA:
+        #     self.state = JSONState.PARAM_NAME  # ou END si pas de paramètre supplémentaire
+        else:
+            raise ValueError("Invalid state transition")    

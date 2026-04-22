@@ -1,7 +1,8 @@
 from llm_sdk import Small_LLM_Model
 import json
 import numpy as np
-from functions import FunctionsDefinition
+from functions_manager import FunctionsDefinition
+from JSONStateMachine import JSONStateMachine
 
 def build_prompt(functions_def: FunctionsDefinition, prompt: str) -> str:
     """Start with a base instruction, then append the functions definition,
@@ -33,52 +34,9 @@ def _build_token_to_id(vocab: dict) -> dict[str, int]:
     except (TypeError, ValueError) as exc:
         raise ValueError("Unsupported vocab format for token/id conversion") from exc
 
-
-def next_token_selection(model, current_ids: list[int], allowed_ids: set[int]) -> int:
-    """Given the current token ids and a set of allowed token ids,
-    return the next token id
-    """
-    logits = model.get_logits_from_input_ids(current_ids)
-    logits_np = np.array(logits)
-
-    if not allowed_ids:
-        raise ValueError("No allowed tokens available for selection")
-
-    mask = np.full_like(logits_np, float("-inf"))
-    indices = list(allowed_ids)
-    mask[indices] = logits_np[indices]
-
-    return int(np.argmax(mask))
-
-
-def get_allowed_tokens_for_string(
-        target_string,
-        current_generated_text,
-        token_to_id
-        ) -> set[int]:
-    """
-    Determine the next character that is expected
-    and allow tokens that start with it.
-    """
-    # Si on a déjà fini la chaîne
-    if current_generated_text == target_string:
-        return {token_to_id.get(" ")}  # Ou un token de ponctuation comme ':'
-    
-    # Trouver ce qu'il reste à générer
-    remaining = target_string[len(current_generated_text):]
-    
-    allowed = set()
-    for token_str, t_id in token_to_id.items():
-        # On autorise les tokens qui sont le début de ce qu'il reste à écrire
-        # Attention : gérer les espaces de début de token (ex: 'Ġ' ou ' ')
-        clean_token = token_str.replace('Ġ', ' ').replace(' ', ' ')
-        if remaining.startswith(clean_token) and clean_token != "":
-            allowed.add(t_id)
-    return allowed
-
 def get_filtered_vocab_for_functions(functions_names: list[str], functions_descriptions: dict[str, str], token_to_id: dict[str, int]) -> list[tuple[str, int]]:
     """Return a filtered list of (token_str, token_id) that are relevant for the function names and syntax."""
-   
+
     syntax_tokens = ['{"', '":', ',"', '": "', '",', '}', '[', ']', '": ', ' {', 'true', 'false', 'null']
     desciptions_token = [token for desc in functions_descriptions.values() for token in desc.split()]
     print("Descriptions tokens:", desciptions_token)
@@ -95,6 +53,22 @@ def get_filtered_vocab_for_functions(functions_names: list[str], functions_descr
             filtered_vocab.append((clean_t, t_id))
 
     return filtered_vocab
+
+def next_token_selection(model, current_ids: list[int], allowed_ids: set[int]) -> int:
+    """Given the current token ids and a set of allowed token ids,
+    return the next token id
+    """
+    logits = model.get_logits_from_input_ids(current_ids)
+    logits_np = np.array(logits)
+
+    if not allowed_ids:
+        raise ValueError("No allowed tokens available for selection")
+
+    mask = np.full_like(logits_np, float("-inf"))
+    indices = list(allowed_ids)
+    mask[indices] = logits_np[indices]
+
+    return int(np.argmax(mask))
 
 def test_small_llm_model():
     input_prompt = input("input_prompt:")
@@ -123,29 +97,34 @@ def test_small_llm_model():
     functions_descriptions = {fn.name: fn.description for fn in functions_def.functions}
     relevant_tokens = get_filtered_vocab_for_functions(functions_names, functions_descriptions, token_to_id)
 
+    fsm = JSONStateMachine(model, functions_def, token_to_id)
 
     current_text = ""
     for i in range(max_res_tokens):
         allowed_tokens = set()
-        still_possible = [s for s in functions_names if s.startswith(current_text)]
-        for s in still_possible:
-            allowed_tokens.update(get_allowed_tokens_for_string(s, current_text, token_to_id))
-        remaining_needed = [s[len(current_text):] for s in still_possible if len(s) > len(current_text)]
-        # 2. Si rien n'est possible, on arrête ou on gère l'erreur
-        if not remaining_needed:
-            break
-        for clean_t, t_id in relevant_tokens:
-            if clean_t == "": 
-                continue
-            # Si le token correspond au début de l'un des restes attendus
-            if any(rem.startswith(clean_t) for rem in remaining_needed):
-                allowed_tokens.add(t_id)
+        # still_possible = [s for s in functions_names if s.startswith(current_text)]
+        # for s in still_possible:
+        #     allowed_tokens.update(get_allowed_tokens_for_string(s, current_text, token_to_id))
+        # remaining_needed = [s[len(current_text):] for s in still_possible if len(s) > len(current_text)]
+        # # 2. Si rien n'est possible, on arrête ou on gère l'erreur
+        # if not remaining_needed:
+        #     break
+        # for clean_t, t_id in relevant_tokens:
+        #     if clean_t == "": 
+        #         continue
+        #     # Si le token correspond au début de l'un des restes attendus
+        #     if any(rem.startswith(clean_t) for rem in remaining_needed):
+        #         allowed_tokens.add(t_id)
+        allowed_tokens = fsm.get_allowed_tokens()
+        
 
         if not allowed_tokens:
             print(f"Block after : '{current_text}'")
             break
         new_token_id = next_token_selection(model, tokens_ids, allowed_tokens)
-    
+
+        fsm.update(new_token_id)
+
         tokens_ids.append(new_token_id)
         response_tokens_ids.append(new_token_id)
         current_text += model.decode([new_token_id])
