@@ -13,6 +13,7 @@ class JSONState(Enum):
     PARAM_VAL = auto()      # [Valeur selon le type]
     PARAM_COMMA = auto()    # ,
     END = auto()            # }
+    STOP = auto()           # Token de fin de génération
 
 
 class JSONStateMachine:
@@ -143,19 +144,25 @@ class JSONStateMachine:
         elif self.state == JSONState.NAME_KEY:
             self.state = JSONState.NAME_VAL
         elif self.state == JSONState.NAME_VAL:
-            self.param_nb = self.functions.get_nb_parameters(self.current_function_name)
+            self.param_nb = self.functions.get_nb_parameters(
+                self.current_function_name)
             self.state = JSONState.PARAMS_KEY
-        elif self.state == JSONState.PARAMS_KEY and self.current_param_nb < self.param_nb:
+        elif (self.state == JSONState.PARAMS_KEY
+              and self.current_param_nb < self.param_nb):
             self.state = JSONState.PARAM_NAME
-        # elif self.state == JSONState.PARAM_NAME:
-        #     self.state = JSONState.PARAM_COLON
-        # elif self.state == JSONState.PARAM_COLON:
-        #     self.state = JSONState.PARAM_VAL
-        # elif self.state == JSONState.PARAM_VAL:
-        #     self.state = JSONState.PARAM_COMMA
-        # elif self.state == JSONState.PARAM_COMMA:
-        #     self.state = JSONState.PARAM_NAME  # ou END si pas de paramètre supplémentaire
         elif self.state == JSONState.PARAM_NAME:
-            self.state = JSONState.END
+            self.state = JSONState.PARAM_COLON
+        elif self.state == JSONState.PARAM_COLON:
+            self.state = JSONState.PARAM_VAL
+        elif self.state == JSONState.PARAM_VAL:
+            self.current_param_nb += 1
+            if self.current_param_nb < self.param_nb:
+                self.state = JSONState.PARAM_COMMA
+            else:
+                self.state = JSONState.END
+        elif self.state == JSONState.PARAM_COMMA:
+            self.state = JSONState.PARAMS_KEY  # ou END si pas de paramètre supplémentaire
+        elif self.state == JSONState.END:
+            self.state = JSONState.STOP
         else:
             raise ValueError("Invalid state transition")

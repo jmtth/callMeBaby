@@ -114,6 +114,9 @@ def test_small_llm_model():
             #print(f"progress set to {fsm.progress} for state {fsm.state} and target tokens {target_tokens}")
             fsm.update(target_tokens[-1])
             #print(f"Next state: {fsm.state}, current text: '{current_text}', target tokens: {target_tokens}, progress: {fsm.progress}")  # Update FSM with the last token of the target sequence
+            if fsm.state == JSONState.STOP:
+                print(f"Reached STOP state after fixed sequence. Ending generation.")
+                break
         else:
             allowed_tokens = set()
             # still_possible = [s for s in functions_names if s.startswith(current_text)]
@@ -131,9 +134,9 @@ def test_small_llm_model():
             #         allowed_tokens.add(t_id)
             allowed_tokens = fsm.get_allowed_tokens()
 
-            if not allowed_tokens or fsm.state == JSONState.END:
-                print(f"Block after : '{current_text}'")
-                break
+            # if not allowed_tokens or fsm.state == JSONState.END:
+            #     print(f"Block after : '{current_text}'")
+            #     break
             new_token_id = next_token_selection(model, tokens_ids, allowed_tokens)
 
 
