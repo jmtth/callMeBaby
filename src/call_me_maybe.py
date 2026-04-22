@@ -2,7 +2,7 @@ from llm_sdk import Small_LLM_Model
 import json
 import numpy as np
 from functions_manager import FunctionsDefinition
-from JSONStateMachine import JSONStateMachine
+from JSONStateMachine import JSONState, JSONStateMachine
 
 def build_prompt(functions_def: FunctionsDefinition, prompt: str) -> str:
     """Start with a base instruction, then append the functions definition,
@@ -34,14 +34,14 @@ def _build_token_to_id(vocab: dict) -> dict[str, int]:
     except (TypeError, ValueError) as exc:
         raise ValueError("Unsupported vocab format for token/id conversion") from exc
 
-def get_filtered_vocab_for_functions(functions_names: list[str], functions_descriptions: dict[str, str], token_to_id: dict[str, int]) -> list[tuple[str, int]]:
+def get_filtered_vocab_for_functions(functions_names: list[str], functions_descriptions: dict[str, str], token_to_id: dict[str, int]) -> dict[str, int]:
     """Return a filtered list of (token_str, token_id) that are relevant for the function names and syntax."""
 
     syntax_tokens = ['{"', '":', ',"', '": "', '",', '}', '[', ']', '": ', ' {', 'true', 'false', 'null']
     desciptions_token = [token for desc in functions_descriptions.values() for token in desc.split()]
-    print("Descriptions tokens:", desciptions_token)
+    #print("Descriptions tokens:", desciptions_token)
 
-    filtered_vocab = []
+    filtered_vocab = dict[str, int]()
     for t_str, t_id in token_to_id.items():
         clean_t = t_str.replace('Ġ', ' ').replace(' ', ' ')
         is_syntax = any(syntax == clean_t for syntax in syntax_tokens)
@@ -50,7 +50,7 @@ def get_filtered_vocab_for_functions(functions_names: list[str], functions_descr
         is_digit = clean_t.strip().isdigit() or clean_t in [".", "-", "e"]
         
         if is_syntax or is_part_of_fn or is_digit or is_part_of_desc:
-            filtered_vocab.append((clean_t, t_id))
+            filtered_vocab[clean_t] = t_id
 
     return filtered_vocab
 
@@ -83,7 +83,7 @@ def test_small_llm_model():
         cache_dir="./.hf_cache",
         local_files_only=True, # First run will download the model, then True for subsequent runs
     )
-    max_res_tokens = 20
+    max_res_tokens = 30
     tokens_ids = model.encode(prompt)[0].tolist()
     response_tokens_ids: list[int] = []
 
@@ -97,37 +97,50 @@ def test_small_llm_model():
     functions_descriptions = {fn.name: fn.description for fn in functions_def.functions}
     relevant_tokens = get_filtered_vocab_for_functions(functions_names, functions_descriptions, token_to_id)
 
-    fsm = JSONStateMachine(model, functions_def, token_to_id)
+    fsm = JSONStateMachine(model, functions_def, relevant_tokens, input_prompt)
 
     current_text = ""
     for i in range(max_res_tokens):
-        allowed_tokens = set()
-        # still_possible = [s for s in functions_names if s.startswith(current_text)]
-        # for s in still_possible:
-        #     allowed_tokens.update(get_allowed_tokens_for_string(s, current_text, token_to_id))
-        # remaining_needed = [s[len(current_text):] for s in still_possible if len(s) > len(current_text)]
-        # # 2. Si rien n'est possible, on arrête ou on gère l'erreur
-        # if not remaining_needed:
-        #     break
-        # for clean_t, t_id in relevant_tokens:
-        #     if clean_t == "": 
-        #         continue
-        #     # Si le token correspond au début de l'un des restes attendus
-        #     if any(rem.startswith(clean_t) for rem in remaining_needed):
-        #         allowed_tokens.add(t_id)
-        allowed_tokens = fsm.get_allowed_tokens()
+        #print(f"\n--- Step {i+1} --- current FSM state: {fsm.state}, current text: '{current_text}'")
         
+        #print(f"Current FSM state: {fsm.state}, target tokens: {target_tokens}, current text: '{current_text}'")
+        # Static tokens for fixed parts of the JSON structure have priority
+        if fsm.is_in_fixed_sequence():
+            target_tokens = fsm.get_target_tokens_for_current_state()
+            tokens_ids.extend(target_tokens)
+            response_tokens_ids.extend(target_tokens)
+            #current_text += model.decode(target_tokens)
+            fsm.progress = len(target_tokens) - 1 if len(target_tokens) - 1 > 0 else 0  # We will update the FSM with the last token of the target sequence
+            #print(f"progress set to {fsm.progress} for state {fsm.state} and target tokens {target_tokens}")
+            fsm.update(target_tokens[-1])
+            #print(f"Next state: {fsm.state}, current text: '{current_text}', target tokens: {target_tokens}, progress: {fsm.progress}")  # Update FSM with the last token of the target sequence
+        else:
+            allowed_tokens = set()
+            # still_possible = [s for s in functions_names if s.startswith(current_text)]
+            # for s in still_possible:
+            #     allowed_tokens.update(get_allowed_tokens_for_string(s, current_text, token_to_id))
+            # remaining_needed = [s[len(current_text):] for s in still_possible if len(s) > len(current_text)]
+            # # 2. Si rien n'est possible, on arrête ou on gère l'erreur
+            # if not remaining_needed:
+            #     break
+            # for clean_t, t_id in relevant_tokens:
+            #     if clean_t == "": 
+            #         continue
+            #     # Si le token correspond au début de l'un des restes attendus
+            #     if any(rem.startswith(clean_t) for rem in remaining_needed):
+            #         allowed_tokens.add(t_id)
+            allowed_tokens = fsm.get_allowed_tokens()
 
-        if not allowed_tokens:
-            print(f"Block after : '{current_text}'")
-            break
-        new_token_id = next_token_selection(model, tokens_ids, allowed_tokens)
+            if not allowed_tokens or fsm.state == JSONState.END:
+                print(f"Block after : '{current_text}'")
+                break
+            new_token_id = next_token_selection(model, tokens_ids, allowed_tokens)
 
-        fsm.update(new_token_id)
 
-        tokens_ids.append(new_token_id)
-        response_tokens_ids.append(new_token_id)
-        current_text += model.decode([new_token_id])
+            tokens_ids.append(new_token_id)
+            response_tokens_ids.append(new_token_id)
+            #current_text += model.decode([new_token_id])
+            fsm.update(new_token_id)
 
     print(f"Final response token ids: {response_tokens_ids}")
     print(f"Final response: {model.decode(response_tokens_ids)}")

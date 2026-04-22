@@ -16,7 +16,7 @@ class JSONState(Enum):
 
 
 class JSONStateMachine:
-    def __init__(self, model, functions_def, token_to_id):
+    def __init__(self, model, functions_def, token_to_id, prompt=""):
         self.model = model
         self.state = JSONState.START
         self.buffer_tokens: list[int] = []
@@ -31,12 +31,19 @@ class JSONStateMachine:
             JSONState.PROMPT_KEY: model.encode('"prompt": "')[0].tolist(),
             JSONState.NAME_KEY: model.encode('", "name": "')[0].tolist(),
             JSONState.PARAMS_KEY: model.encode('", "parameters": {')[0].tolist(),
+            JSONState.PROMPT_VAL: model.encode(prompt)[0].tolist(),
             # JSONState.PARAM_COLON: model.encode(": ")[0].tolist(),
             # JSONState.PARAM_COMMA: model.encode(", ")[0].tolist(),
             JSONState.END: model.encode('}')[0].tolist(),
         }
 
         self.progress = 0
+
+    def get_target_tokens_for_current_state(self) -> list[int]:
+        return self.targets.get(self.state, [])
+    
+    def is_in_fixed_sequence(self) -> bool:
+        return self.state in self.targets
 
     def get_allowed_tokens(self) -> set[int]:
         # 1. Si on est dans une séquence fixe (JSON)
@@ -99,7 +106,7 @@ class JSONStateMachine:
 
         self.buffer_tokens.append(token_id)
         self.current_text += token_text
-
+        #print(f" -- FSM update: received token_id={token_id} ('{token_text}'), progress={self.progress}")  # Debug print
         # 1. Gestion des séquences fixes
         if self.state in self.targets:
             target = self.targets[self.state]
@@ -131,8 +138,8 @@ class JSONStateMachine:
             self.state = JSONState.NAME_VAL
         elif self.state == JSONState.NAME_VAL:
             self.state = JSONState.PARAMS_KEY
-        # elif self.state == JSONState.PARAMS_KEY:
-        #     self.state = JSONState.PARAM_NAME
+        elif self.state == JSONState.PARAMS_KEY:
+            self.state = JSONState.PARAM_NAME
         # elif self.state == JSONState.PARAM_NAME:
         #     self.state = JSONState.PARAM_COLON
         # elif self.state == JSONState.PARAM_COLON:
@@ -141,5 +148,7 @@ class JSONStateMachine:
         #     self.state = JSONState.PARAM_COMMA
         # elif self.state == JSONState.PARAM_COMMA:
         #     self.state = JSONState.PARAM_NAME  # ou END si pas de paramètre supplémentaire
+        elif self.state == JSONState.PARAM_NAME:
+            self.state = JSONState.END
         else:
-            raise ValueError("Invalid state transition")    
+            raise ValueError("Invalid state transition")  
