@@ -74,7 +74,7 @@ class FunctionsDefinition:
         func = self.get_function_by_name(name)
         return func.parameters
 
-    def get_function_parameters_count_by_name(self, name: str) -> int:
+    def get_nb_parameters(self, name: str) -> int:
         params = self.get_function_parameters_by_name(name)
         return len(params)
 
@@ -100,7 +100,7 @@ def main():
     print(functions_def.get_function_by_name(name))
     print(functions_def.get_function_description_by_name(name))
     print(functions_def.get_function_parameters_by_name(name))
-    print(functions_def.get_function_parameters_count_by_name(name))
+    print(functions_def.get_nb_parameters(name))
 
 
 if __name__ == "__main__":

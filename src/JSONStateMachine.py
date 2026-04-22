@@ -9,9 +9,9 @@ class JSONState(Enum):
     NAME_VAL = auto()       # [Nom de la fonction]
     PARAMS_KEY = auto()     # ", "parameters": {
     PARAM_NAME = auto()     # "nom_du_parametre"
-    # PARAM_COLON = auto()    # :
-    # PARAM_VAL = auto()      # [Valeur selon le type]
-    # PARAM_COMMA = auto()    # ,
+    PARAM_COLON = auto()    # :
+    PARAM_VAL = auto()      # [Valeur selon le type]
+    PARAM_COMMA = auto()    # ,
     END = auto()            # }
 
 
@@ -21,8 +21,10 @@ class JSONStateMachine:
         self.state = JSONState.START
         self.buffer_tokens: list[int] = []
         self.current_text = ""
+        self.current_function_name = ""
 
         self.functions_names = functions_def.list_functions_name()
+        self.functions = functions_def
         self.token_to_id = token_to_id
 
         # Targets encodés
@@ -32,12 +34,14 @@ class JSONStateMachine:
             JSONState.NAME_KEY: model.encode('", "name": "')[0].tolist(),
             JSONState.PARAMS_KEY: model.encode('", "parameters": {')[0].tolist(),
             JSONState.PROMPT_VAL: model.encode(prompt)[0].tolist(),
-            # JSONState.PARAM_COLON: model.encode(": ")[0].tolist(),
-            # JSONState.PARAM_COMMA: model.encode(", ")[0].tolist(),
-            JSONState.END: model.encode('}')[0].tolist(),
+            JSONState.PARAM_COLON: model.encode(": ")[0].tolist(),
+            JSONState.PARAM_VAL: model.encode(" ")[0].tolist(),
+            JSONState.PARAM_COMMA: model.encode(", ")[0].tolist(),
+            JSONState.END: model.encode("}}")[0].tolist(),
         }
 
         self.progress = 0
+        self.current_param_nb = 0  # To keep track of which parameter we are generating (if needed)
 
     def get_target_tokens_for_current_state(self) -> list[int]:
         return self.targets.get(self.state, [])
@@ -123,9 +127,11 @@ class JSONStateMachine:
 
         # 2. Cas dynamique (nom de fonction)
         elif self.state == JSONState.NAME_VAL:
+            self.current_function_name = self.current_text
             if self.current_text in self.functions_names:
                 self._update_state()
                 self.current_text = ""
+        print(f" -- FSM update: new state={self.state}, current_text='{self.current_text}', current_function_name='{self.current_function_name}'")  # Debug print
 
     def _update_state(self):
         if self.state == JSONState.START:
@@ -137,8 +143,9 @@ class JSONStateMachine:
         elif self.state == JSONState.NAME_KEY:
             self.state = JSONState.NAME_VAL
         elif self.state == JSONState.NAME_VAL:
+            self.param_nb = self.functions.get_nb_parameters(self.current_function_name)
             self.state = JSONState.PARAMS_KEY
-        elif self.state == JSONState.PARAMS_KEY:
+        elif self.state == JSONState.PARAMS_KEY and self.current_param_nb < self.param_nb:
             self.state = JSONState.PARAM_NAME
         # elif self.state == JSONState.PARAM_NAME:
         #     self.state = JSONState.PARAM_COLON
@@ -151,4 +158,4 @@ class JSONStateMachine:
         elif self.state == JSONState.PARAM_NAME:
             self.state = JSONState.END
         else:
-            raise ValueError("Invalid state transition")  
+            raise ValueError("Invalid state transition")

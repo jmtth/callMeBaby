@@ -37,7 +37,7 @@ def _build_token_to_id(vocab: dict) -> dict[str, int]:
 def get_filtered_vocab_for_functions(functions_names: list[str], functions_descriptions: dict[str, str], token_to_id: dict[str, int]) -> dict[str, int]:
     """Return a filtered list of (token_str, token_id) that are relevant for the function names and syntax."""
 
-    syntax_tokens = ['{"', '":', ',"', '": "', '",', '}', '[', ']', '": ', ' {', 'true', 'false', 'null']
+    syntax_tokens = ['{"', '":', ',"', '": "', '",', '[', ']', '": ', ' {', 'true', 'false', 'null']
     desciptions_token = [token for desc in functions_descriptions.values() for token in desc.split()]
     #print("Descriptions tokens:", desciptions_token)
 
