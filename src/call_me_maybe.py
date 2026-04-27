@@ -37,7 +37,10 @@ def _build_token_to_id(vocab: dict) -> dict[str, int]:
 def get_filtered_vocab_for_functions(functions_names: list[str], functions_descriptions: dict[str, str], token_to_id: dict[str, int]) -> dict[str, int]:
     """Return a filtered list of (token_str, token_id) that are relevant for the function names and syntax."""
 
-    syntax_tokens = ['{"', '":', ',"', '": "', '",', '[', ']', '": ', ' {', 'true', 'false', 'null']
+    syntax_tokens = [
+        '{"', '":', ',"', '": "', '",', '[', ']', '": ', ' {',
+        'true', 'false', 'null', ',', ' '
+    ]
     desciptions_token = [token for desc in functions_descriptions.values() for token in desc.split()]
     #print("Descriptions tokens:", desciptions_token)
 
@@ -101,15 +104,13 @@ def test_small_llm_model():
 
     current_text = ""
     for i in range(max_res_tokens):
-        #print(f"\n--- Step {i+1} --- current FSM state: {fsm.state}, current text: '{current_text}'")
+        print(f"\n--- Step {i+1} --- current FSM state: {fsm.state}, current text: '{current_text}'")
         
-        #print(f"Current FSM state: {fsm.state}, target tokens: {target_tokens}, current text: '{current_text}'")
-        # Static tokens for fixed parts of the JSON structure have priority
         if fsm.is_in_fixed_sequence():
             target_tokens = fsm.get_target_tokens_for_current_state()
             tokens_ids.extend(target_tokens)
             response_tokens_ids.extend(target_tokens)
-            #current_text += model.decode(target_tokens)
+            current_text += model.decode(target_tokens)
             fsm.progress = len(target_tokens) - 1 if len(target_tokens) - 1 > 0 else 0  # We will update the FSM with the last token of the target sequence
             #print(f"progress set to {fsm.progress} for state {fsm.state} and target tokens {target_tokens}")
             fsm.update(target_tokens[-1])
@@ -119,31 +120,17 @@ def test_small_llm_model():
                 break
         else:
             allowed_tokens = set()
-            # still_possible = [s for s in functions_names if s.startswith(current_text)]
-            # for s in still_possible:
-            #     allowed_tokens.update(get_allowed_tokens_for_string(s, current_text, token_to_id))
-            # remaining_needed = [s[len(current_text):] for s in still_possible if len(s) > len(current_text)]
-            # # 2. Si rien n'est possible, on arrête ou on gère l'erreur
-            # if not remaining_needed:
-            #     break
-            # for clean_t, t_id in relevant_tokens:
-            #     if clean_t == "": 
-            #         continue
-            #     # Si le token correspond au début de l'un des restes attendus
-            #     if any(rem.startswith(clean_t) for rem in remaining_needed):
-            #         allowed_tokens.add(t_id)
             allowed_tokens = fsm.get_allowed_tokens()
-
-            # if not allowed_tokens or fsm.state == JSONState.END:
-            #     print(f"Block after : '{current_text}'")
-            #     break
+            if not allowed_tokens or fsm.state == JSONState.END:
+                print(f"Block after : '{current_text}'")
+                break
             new_token_id = next_token_selection(model, tokens_ids, allowed_tokens)
 
-
-            tokens_ids.append(new_token_id)
-            response_tokens_ids.append(new_token_id)
-            #current_text += model.decode([new_token_id])
-            fsm.update(new_token_id)
+            keep_token = fsm.update(new_token_id)
+            if keep_token:
+                tokens_ids.append(new_token_id)
+                response_tokens_ids.append(new_token_id)
+                current_text += model.decode([new_token_id])
 
     print(f"Final response token ids: {response_tokens_ids}")
     print(f"Final response: {model.decode(response_tokens_ids)}")
