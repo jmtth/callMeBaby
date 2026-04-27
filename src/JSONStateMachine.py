@@ -49,7 +49,7 @@ class JSONStateMachine:
         counts = []
         for match in re.finditer(r"-?\d+(?:\.(\d+))?", prompt):
             frac = match.group(1)
-            counts.append(len(frac) if frac is not None else 0)
+            counts.append(len(frac) if frac is not None else 1)
         return counts
 
     def _is_valid_number_fragment(self, text: str) -> bool:
