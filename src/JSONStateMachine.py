@@ -1,5 +1,5 @@
 from models import JSONState
-from utils import extract_decimal_counts
+from utils import extract_decimal_counts, is_valid_number_fragment
 
 
 class JSONStateMachine:
@@ -39,34 +39,7 @@ class JSONStateMachine:
         self.prompt_decimal_counts = extract_decimal_counts(prompt)
 
     
-    def _is_valid_number_fragment(self, text: str) -> bool:
-        if text == "":
-            return True
-
-        chars = set("0123456789-.e")
-        if any(ch not in chars for ch in text):
-            return False
-
-        if text.count("e") > 1:
-            return False
-        if text.count(".") > 1:
-            return False
-
-        e_pos = text.find("e")
-        if e_pos != -1 and text.find(".", e_pos) != -1:
-            return False
-
-        if "-" in text:
-            for i, ch in enumerate(text):
-                if ch != "-":
-                    continue
-                if i == 0:
-                    continue
-                if i > 0 and text[i - 1] == "e":
-                    continue
-                return False
-
-        return True
+    
 
     def _is_complete_number(self, text: str) -> bool:
         if text == "":
@@ -98,7 +71,7 @@ class JSONStateMachine:
                 continue
             if " " in clean_t:
                 continue
-            if self._is_valid_number_fragment(clean_t):
+            if is_valid_number_fragment(clean_t):
                 allowed.add(token_id)
         return allowed
 
@@ -240,7 +213,7 @@ class JSONStateMachine:
                 token_text = self.model.decode([token_id])
                 candidate = text + token_text
 
-                if not self._is_valid_number_fragment(candidate):
+                if not is_valid_number_fragment(candidate):
                     continue
 
                 # If prompt has numeric literals, keep their decimal precision.
