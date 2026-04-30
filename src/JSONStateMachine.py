@@ -1,5 +1,5 @@
 from models import JSONState
-from utils import extract_decimal_counts, is_valid_number_fragment
+import utils
 
 
 class JSONStateMachine:
@@ -36,70 +36,23 @@ class JSONStateMachine:
         self.progress = 0
         self.current_param_nb = 0
         self.total_params = 0  # Set when function name is known
-        self.prompt_decimal_counts = extract_decimal_counts(prompt)
-
+        self.prompt_decimal_counts = utils.extract_decimal_counts(prompt)
+####
     
-    
 
-    def _is_complete_number(self, text: str) -> bool:
-        if text == "":
-            return False
 
-        if text[-1] in {"-", ".", "e"}:
-            return False
-
-        if "e" in text:
-            left, right = text.split("e", 1)
-            if left in {"", "-", ".", "-."}:
-                return False
-            if right in {"", "+", "-"}:
-                return False
-            if right[0] in {"+", "-"}:
-                right = right[1:]
-            return right.isdigit()
-
-        if text in {"-", ".", "-."}:
-            return False
-
-        return any(ch.isdigit() for ch in text)
-
-    def _get_number_token_ids(self) -> set[int]:
-        allowed = set()
-        for token_str, token_id in self.token_to_id.items():
-            clean_t = token_str.replace('Ġ', ' ').replace(' ', ' ')
-            if clean_t == "":
-                continue
-            if " " in clean_t:
-                continue
-            if is_valid_number_fragment(clean_t):
-                allowed.add(token_id)
-        return allowed
-
-    def _get_number_terminator_token_ids(self) -> set[int]:
-        terminators = set()
-        for exact_text in [" ", "  ", ",", ", ", " ,", "}"]:
-            terminators.update(self._get_exact_token_ids(exact_text))
-        return terminators
-
-    def _is_number_terminator_token(self, token_text: str) -> bool:
-        return token_text in {" ", "  ", ",", ", ", " ,", "}"}
-
-    def _get_exact_token_ids(self, exact_text: str) -> set[int]:
-        allowed = set()
-        for token_str, token_id in self.token_to_id.items():
-            clean_t = token_str.replace('Ġ', ' ').replace(' ', ' ')
-            if clean_t == exact_text:
-                allowed.add(token_id)
-        return allowed
 
     def _get_all_token_ids(self) -> set[int]:
         return set(self.token_to_id.values())
-
+############
     def _get_adjusted_param_index(self) -> int:
         """Get the current parameter index, adjusted for PARAM_VAL state.
         
         When in PARAM_VAL state (filling the parameter value), we need to look at
         the parameter we're currently filling, not the next one.
+
+        returns:
+            int : idx of the parameter
         """
         idx = self.current_param_nb
         if self.state == JSONState.PARAM_VAL and idx > 0:
@@ -209,11 +162,11 @@ class JSONStateMachine:
             target_decimals = self._get_target_decimals_for_current_param()
 
             digit_tokens = set()
-            for token_id in self._get_number_token_ids():
+            for token_id in utils.get_number_token_ids(self.token_to_id):
                 token_text = self.model.decode([token_id])
                 candidate = text + token_text
 
-                if not is_valid_number_fragment(candidate):
+                if not utils.is_valid_number_fragment(candidate):
                     continue
 
                 # If prompt has numeric literals, keep their decimal precision.
@@ -233,7 +186,7 @@ class JSONStateMachine:
 
                 digit_tokens.add(token_id)
 
-            if not self._is_complete_number(text):
+            if not utils.is_complete_number(text):
                 return digit_tokens
 
             # Number is complete. Only allow termination when precision target is met.
@@ -250,7 +203,8 @@ class JSONStateMachine:
                 if has_dot and frac_len < 2:
                     return digit_tokens
 
-            terminator_tokens = self._get_number_terminator_token_ids()
+            terminator_tokens = utils.get_number_terminator_token_ids(
+                self.token_to_id)
             if terminator_tokens:
                 return digit_tokens | terminator_tokens
             return digit_tokens
@@ -308,8 +262,8 @@ class JSONStateMachine:
             param_type = self._get_current_param_type()
             if (
                 param_type == "number"
-                and self._is_number_terminator_token(token_text)
-                and self._is_complete_number(self.current_text)
+                and utils.is_number_terminator_token(token_text)
+                and utils.is_complete_number(self.current_text)
             ):
                 self._update_state()
                 self.current_text = ""
