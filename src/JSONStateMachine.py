@@ -1,5 +1,5 @@
 import re
-from src.models import JSONState
+from models import JSONState
 
 
 class JSONStateMachine:
@@ -30,7 +30,7 @@ class JSONStateMachine:
             JSONState.PROMPT_VAL: _norm_encode(prompt),
             JSONState.PARAM_COLON: _norm_encode('": '),
             JSONState.PARAM_COMMA: _norm_encode(', "'),
-            JSONState.END: _norm_encode("}"),
+            JSONState.END: _norm_encode("}}"),
         }
 
         self.progress = 0

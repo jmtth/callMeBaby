@@ -1,5 +1,5 @@
-from src.JSONStateMachine import JSONStateMachine
-from src.models import JSONState
+from JSONStateMachine import JSONStateMachine
+from models import JSONState
 
 
 class DummyFunctionsDef:

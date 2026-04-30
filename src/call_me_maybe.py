@@ -1,9 +1,9 @@
 from llm_sdk import Small_LLM_Model
 import json
 import numpy as np
-from src.functions_manager import FunctionsDefinition
-from src.JSONStateMachine import JSONStateMachine
-from src.models import JSONState
+from functions_manager import FunctionsDefinition
+from JSONStateMachine import JSONStateMachine
+from models import JSONState
 
 def build_prompt(functions_def: FunctionsDefinition, prompt: str) -> str:
     """Start with a base instruction, then append the functions definition,

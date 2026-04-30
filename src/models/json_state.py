@@ -12,5 +12,5 @@ class JSONState(Enum):
     PARAM_COLON = auto()    # :
     PARAM_VAL = auto()      # [Valeur selon le type]
     PARAM_COMMA = auto()    # ,
-    END = auto()            # }
+    END = auto()            # }}
     STOP = auto()           # Token de fin de génération

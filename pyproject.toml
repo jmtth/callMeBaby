@@ -16,7 +16,7 @@ members = ["llm_sdk"]
 llm-sdk = { workspace = true, editable = true }
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = [".", "src"]
 testpaths = ["tests"]
 
 [dependency-groups]
