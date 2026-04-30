@@ -74,6 +74,22 @@ def next_token_selection(model, current_ids: list[int], allowed_ids: set[int]) -
 
     return int(np.argmax(mask))
 
+
+def load_model(device: str = "cpu", cache_dir: str = "./.hf_cache") -> Small_LLM_Model:
+    """Load the small LLM model.
+    First, try to load with local_files_only=True to avoid downloads.
+    If the model files are not found locally, local_files_only=False.
+    """
+    try:
+        return Small_LLM_Model(device=device,
+                               cache_dir=cache_dir,
+                               local_files_only=True)
+    except Exception:
+        return Small_LLM_Model(device=device,
+                               cache_dir=cache_dir,
+                               local_files_only=False)
+
+
 def test_small_llm_model():
     input_prompt = input("input_prompt:")
     print("input_prompt:", input_prompt)
@@ -82,11 +98,7 @@ def test_small_llm_model():
     print("Building prompt...")
     prompt = build_prompt(functions_def, input_prompt)
     print("Instruction:", prompt)
-    model = Small_LLM_Model(
-        device="cpu",
-        cache_dir="./.hf_cache",
-        local_files_only=True, # First run will download the model, then True for subsequent runs
-    )
+    model = load_model()
     max_res_tokens = 30
     tokens_ids = model.encode(prompt)[0].tolist()
     response_tokens_ids: list[int] = []

@@ -1,5 +1,5 @@
-import re
 from models import JSONState
+from utils import extract_decimal_counts
 
 
 class JSONStateMachine:
@@ -36,16 +36,9 @@ class JSONStateMachine:
         self.progress = 0
         self.current_param_nb = 0
         self.total_params = 0  # Set when function name is known
-        self.prompt_decimal_counts = self._extract_prompt_decimal_counts(prompt)
+        self.prompt_decimal_counts = extract_decimal_counts(prompt)
 
-    def _extract_prompt_decimal_counts(self, prompt: str) -> list[int]:
-        counts = []
-        for match in re.finditer(r"-?\d+(?:\.(\d+))?", prompt):
-            frac = match.group(1)
-            # If there's a fractional part, use its length; otherwise 0 for integers
-            counts.append(len(frac) if frac is not None else 1)
-        return counts
-
+    
     def _is_valid_number_fragment(self, text: str) -> bool:
         if text == "":
             return True

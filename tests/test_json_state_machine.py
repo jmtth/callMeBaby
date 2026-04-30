@@ -37,7 +37,7 @@ class FakeModel:
         return ''.join(chr(i) for i in ids)
 
 
-def test_extract_prompt_decimal_counts():
+def test_extract_decimal_counts():
     model = FakeModel()
     funcs = DummyFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
