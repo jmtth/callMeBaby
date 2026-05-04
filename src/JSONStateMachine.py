@@ -180,6 +180,25 @@ class JSONStateMachine:
             # Closing quote must be a standalone token.
             if quote_id is not None:
                 allowed_tokens.add(quote_id)
+            # Safety 1: limit maximum string length to prevent runaway tokens
+            max_chars = 200
+            # current_text includes the opening quote
+            if len(self.current_text) >= max_chars:
+                return {quote_id} if quote_id is not None else set()
+
+            # Prevent runaway repetition: disallow a token if it already
+            # appears consecutively more than `max_repeat` times at the end
+            # of the buffer. This helps stop repeating identical tokens.
+            max_repeat = 6
+            if len(self.buffer_tokens) >= max_repeat - 1:
+                recent = self.buffer_tokens[-(max_repeat - 1):]
+                filtered = set()
+                for t in allowed_tokens:
+                    if all(rt == t for rt in recent):
+                        continue
+                    filtered.add(t)
+                return filtered
+
             return allowed_tokens
         elif param_type == "number":
             text = self.current_text
