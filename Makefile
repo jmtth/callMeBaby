@@ -18,12 +18,12 @@ clean:
 
 lint:
 	@echo "Linting CallMeBaby..."
-	uv run flake8 .
-	uv run mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
+	uv run flake8 ./src
+	uv run mypy ./src --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
 
 lint-strict:
 	@echo "Strict linting CallMeBaby..."
-	uv run flake8 .
-	uv run mypy . --strict
+	uv run flake8 ./src
+	uv run mypy ./src --strict
 
 .PHONY: install run debug clean lint lint-strict

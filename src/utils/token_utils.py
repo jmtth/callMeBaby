@@ -1,4 +1,4 @@
-from utils import is_valid_number_fragment
+from src.utils.number_utils import is_valid_number_fragment
 
 
 def is_number_terminator_token(token_text: str) -> bool:

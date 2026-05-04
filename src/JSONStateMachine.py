@@ -1,5 +1,7 @@
-from models import JSONState
-import utils
+import re
+
+from src.models import JSONState
+from src import utils
 
 
 class JSONStateMachine:
@@ -37,19 +39,15 @@ class JSONStateMachine:
         self.current_param_nb = 0
         self.total_params = 0  # Set when function name is known
         self.prompt_decimal_counts = utils.extract_decimal_counts(prompt)
-####
-    
-
-
 
     def _get_all_token_ids(self) -> set[int]:
         return set(self.token_to_id.values())
-############
+
     def _get_adjusted_param_index(self) -> int:
         """Get the current parameter index, adjusted for PARAM_VAL state.
-        
-        When in PARAM_VAL state (filling the parameter value), we need to look at
-        the parameter we're currently filling, not the next one.
+
+        When in PARAM_VAL state (filling the parameter value), we need to look
+        at the parameter we're currently filling, not the next one.
 
         returns:
             int : idx of the parameter
@@ -60,7 +58,9 @@ class JSONStateMachine:
         return idx
 
     def _get_current_function_params(self) -> dict | None:
-        """Get the parameters dict for the current function, or None if invalid."""
+        """Get the parameters dict for the current function,
+        or None if invalid.
+        """
         if self.current_function_name not in self.functions_names:
             return None
         params = self.functions.get_function_parameters_by_name(
@@ -180,7 +180,7 @@ class JSONStateMachine:
                         if candidate_frac_len > target_decimals:
                             continue
                 else:
-                    # Fallback when prompt has no numeric literal for this param.
+                    # Fallback when prompt has no numeric literal.
                     if has_dot and frac_len >= 2:
                         continue
 
@@ -189,7 +189,8 @@ class JSONStateMachine:
             if not utils.is_complete_number(text):
                 return digit_tokens
 
-            # Number is complete. Only allow termination when precision target is met.
+            # Number is complete.
+            # Only allow termination when precision target is met.
             if target_decimals is not None:
                 if target_decimals == 0:
                     if "." in text:

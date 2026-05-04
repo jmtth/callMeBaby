@@ -1,6 +1,7 @@
 import json
-from pydantic import BaseModel, Field, ValidationError
 from typing import Dict, List
+
+from pydantic import BaseModel, Field, ValidationError
 
 
 class Parameter(BaseModel):
@@ -40,7 +41,7 @@ class FunctionsDefinition:
 
     @classmethod
     def from_json(cls, path_to_json: str) -> "FunctionsDefinition":
-        """Load function definitions from a JSON file 
+        """Load function definitions from a JSON file
         and return an instance of FunctionsDefinition.
         """
         try:
@@ -91,6 +92,7 @@ class FunctionsDefinition:
                 prompt += f"    - {param_name} (type: {param.type})\n"
             prompt += "\n"
         return prompt
+
 
 def main():
     functions_def = FunctionsDefinition.from_json(
