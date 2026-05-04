@@ -138,8 +138,10 @@ def load_model(device: str = "cpu",
 def _load_prompts(input_path: str | None) -> list[str]:
     if input_path is None:
         return [input("input_prompt:")]
-
-    raw_text = Path(input_path).read_text(encoding="utf-8").strip()
+    try:
+        raw_text = Path(input_path).read_text(encoding="utf-8").strip()
+    except FileNotFoundError as exc:
+        raise ValueError(f"File not found: {input_path}") from exc
     if not raw_text:
         return [""]
 
@@ -219,7 +221,8 @@ def run_cli(functions_definition_path: str, input_path: str | None = None, outpu
     results: list[dict[str, str]] = []
     for prompt in prompts:
         response = generate_response(functions_def, prompt, model=model)
-        results.append({"prompt": prompt, "response": response})
+        #results.append(json.loads(response) if response.startswith("{") else {"response": response})
+        results.append(response)
 
     if output_path is not None:
         Path(output_path).write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -242,13 +245,13 @@ def main(argv: list[str] | None = None) -> int:
         "--input",
         dest="input_path",
         default=None,
-        help="Path to the input file containing one prompt, a list of prompts, or JSON with a prompt field.",
+        help="Path to the list of prompts JSON file.",
     )
     parser.add_argument(
         "--output",
         dest="output_path",
         default=None,
-        help="Path where the generated response(s) should be written.",
+        help="Path where the generated responses should be written.",
     )
     args = parser.parse_args(argv)
 
