@@ -6,10 +6,10 @@ def is_number_terminator_token(token_text: str) -> bool:
     (whitespace, commas, braces).
 
     args:
-        str : a token string
+        str : a token string.
 
     returns:
-        bool: true if the token is a valid terminator
+        bool: true if the token is a valid terminator.
     """
     return token_text in {" ", "  ", ",", ", ", " ,", "}"}
 
@@ -19,7 +19,7 @@ def get_number_token_ids(token_to_id: dict) -> set[int]:
     of a number (digits, '.', 'e', '-').
 
     returns:
-        set[int]: token ids that can be part of a number
+        set[int]: token ids that can be part of a number.
     """
     allowed = set()
     for token_str, token_id in token_to_id.items():
@@ -38,7 +38,7 @@ def get_number_terminator_token_ids(token_to_id: dict) -> set[int]:
     (whitespace, commas, braces).
 
     returns:
-        set[int]: token ids that can terminate a number
+        set[int]: token ids that can terminate a number.
     """
     terminators = set()
     for exact_text in [" ", "  ", ",", ", ", " ,", "}"]:

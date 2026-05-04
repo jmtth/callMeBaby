@@ -3,6 +3,7 @@ name = "callmemaybe"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
+    "accelerate>=1.13.0",
     "llm-sdk",
     "numpy>=2.4.4",
     "pydantic>=2.13.0",

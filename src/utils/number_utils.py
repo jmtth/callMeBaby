@@ -22,10 +22,10 @@ def is_valid_number_fragment(text: str) -> bool:
     The '-' can only be at the start or immediately after an 'e'.
 
     args:
-        str: the string fragment of a number
+        str: the string fragment of a number.
 
     returns:
-        bool: true if it is a valid number fragment
+        bool: true if it is a valid number fragment.
     """
     if text == "":
         return True

@@ -1,11 +1,18 @@
-import re
-
 from src.models import JSONState
 from src import utils
 
 
 class JSONStateMachine:
     def __init__(self, model, functions_def, token_to_id, prompt=""):
+        """State machine to track the generation of a JSON function call.
+
+        Attributes:
+            model: The language model instance.
+            state: The current state of the state machine.
+            buffer_tokens: A list of token IDs representing the generated text.
+            current_text: The current text being generated.
+            current_function_name: The name of the function being called.
+        """
         self.model = model
         self.state = JSONState.START
         self.buffer_tokens: list[int] = []
@@ -100,9 +107,12 @@ class JSONStateMachine:
         return None
 
     def get_target_tokens_for_current_state(self) -> list[int]:
+        """"Get the target token ids for the current state."""
         return self.targets.get(self.state, [])
 
     def is_in_fixed_sequence(self) -> bool:
+        """Check if we are currently in a fixed sequence of tokens
+        (like the JSON structure or the prompt)."""
         return self.state in self.targets
 
     def get_allowed_tokens(self) -> set[int]:
@@ -257,6 +267,16 @@ class JSONStateMachine:
         return allowed
 
     def update(self, token_id: int) -> bool:
+        """Update the state machine with the new token.
+        check if the token is valid in the current state,
+        update the state accordingly,
+        and return whether to keep the token or not.
+
+        Args:
+            token_id: the new token id to update the state machine with.
+
+        Returns:
+            bool: whether to keep the token (True) or not (False)."""
         token_text = self.model.decode([token_id])
 
         if self.state == JSONState.PARAM_VAL:
