@@ -62,6 +62,13 @@ def test_allowed_tokens_for_string_value_uses_actual_token_ids():
 
     allowed_tokens = sm.get_allowed_tokens()
 
+    # Before opening quote, only quote is allowed.
+    assert allowed_tokens == {42}
+
+    sm.current_text = '"'
+    allowed_tokens = sm.get_allowed_tokens()
+
+    # Once inside the string, regular tokens and closing quote are allowed.
     assert allowed_tokens == {10, 42, 99}
 
 

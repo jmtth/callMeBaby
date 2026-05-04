@@ -169,7 +169,7 @@ def _load_prompts(input_path: str | None) -> list[str]:
     return [raw_text]
 
 
-def generate_response(functions_def: FunctionsDefinition, input_prompt: str, model=None, max_res_tokens: int = 30) -> str:
+def generate_response(functions_def: FunctionsDefinition, input_prompt: str, model=None, max_res_tokens: int = 110) -> str:
     prompt = build_prompt(functions_def, input_prompt)
     if model is None:
         model = load_model()
@@ -181,11 +181,11 @@ def generate_response(functions_def: FunctionsDefinition, input_prompt: str, mod
         vocab = json.load(f)
     token_to_id = _build_token_to_id(vocab)
 
-    functions_names = functions_def.list_functions_name()
-    functions_descriptions = {fn.name: fn.description for fn in functions_def.functions}
-    relevant_tokens = get_filtered_vocab_for_functions(functions_names, functions_descriptions, token_to_id)
+    #functions_names = functions_def.list_functions_name()
+    #functions_descriptions = {fn.name: fn.description for fn in functions_def.functions}
+    #relevant_tokens = get_filtered_vocab_for_functions(functions_names, functions_descriptions, token_to_id)
 
-    fsm = JSONStateMachine(model, functions_def, relevant_tokens, input_prompt)
+    fsm = JSONStateMachine(model, functions_def, token_to_id, input_prompt)
 
     current_text = ""
     for i in range(max_res_tokens):
@@ -221,13 +221,14 @@ def run_cli(functions_definition_path: str, input_path: str | None = None, outpu
     results: list[dict[str, str]] = []
     for prompt in prompts:
         response = generate_response(functions_def, prompt, model=model)
-        #results.append(json.loads(response) if response.startswith("{") else {"response": response})
+        print(f"Prompt: {prompt}\nResponse: {response}\n---")
+        # results.append(json.loads(response) if response.startswith("{") else {"response": response})
         results.append(response)
 
     if output_path is not None:
         Path(output_path).write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
     elif len(results) == 1:
-        print(results[0]["response"])
+        print(results[0])
     else:
         print(json.dumps(results, indent=2, ensure_ascii=False))
 

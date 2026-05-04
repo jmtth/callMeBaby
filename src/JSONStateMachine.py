@@ -116,6 +116,11 @@ class JSONStateMachine:
         return self.state in self.targets
 
     def get_allowed_tokens(self) -> set[int]:
+        """Get the allowed token ids for the current state.
+
+        Returns:
+            set[int]: the allowed token ids for the current state.
+        """
         # 1. Sequence fixe (JSON)
         if self.state in self.targets:
             target = self.targets[self.state]
@@ -153,17 +158,28 @@ class JSONStateMachine:
         param_type = self._get_current_param_type()
 
         if param_type == "string":
-            # For strings, allow any chars until closing quote
+            # For strings, force an opening quote, then only allow
+            # content tokens that do not contain a raw quote. This prevents
+            # a single token from containing both a closing quote and
+            # trailing free-form text.
             quote_id = self.token_to_id.get('"')
+
+            if not self.current_text:
+                # Start string with opening quote.
+                return {quote_id} if quote_id is not None else set()
+
+            if not self.current_text.startswith('"'):
+                return set()
+
+            for token_str, token_id in self.token_to_id.items():
+                clean_token = token_str.replace('Ġ', ' ').replace(' ', ' ')
+                if '"' in clean_token:
+                    continue
+                allowed_tokens.add(token_id)
+
+            # Closing quote must be a standalone token.
             if quote_id is not None:
-                # If already in string, allow quote to close it
-                if self.current_text.startswith('"'):
-                    allowed_tokens.add(quote_id)
-                else:
-                    # Start string, allow opening quote
-                    allowed_tokens.add(quote_id)
-            # Allow any character tokens inside string
-            allowed_tokens.update(self._get_all_token_ids())
+                allowed_tokens.add(quote_id)
             return allowed_tokens
         elif param_type == "number":
             text = self.current_text
@@ -332,7 +348,12 @@ class JSONStateMachine:
 
         elif self.state == JSONState.PARAM_VAL:
             param_type = self._get_current_param_type()
-            if param_type == "string" and self.current_text.endswith('"'):
+            if (
+                param_type == "string"
+                and len(self.current_text) > 1
+                and self.current_text.startswith('"')
+                and token_text == '"'
+            ):
                 self._update_state()
                 self.current_text = ""
 
