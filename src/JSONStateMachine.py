@@ -153,14 +153,37 @@ class JSONStateMachine:
                 )
         return allowed_tokens
 
+    def _allowed_tokens_for_parameter_value(self) -> set[int]:
+        allowed_tokens = set()
+        param_type = self._get_current_param_type()
+
+        if param_type == "string":
+            return self._allowed_tokens_for_param_string()
+
+        elif param_type == "number":
+            return self._allowed_tokens_for_param_number()
+
+        elif param_type == "boolean":
+            # Only allow 'true' or 'false'
+            allowed_tokens = set()
+            for token_str, token_id in self.token_to_id.items():
+                clean_token = token_str.replace('Ġ', ' ').replace(' ', ' ')
+                if clean_token in {"true", "false"}:
+                    allowed_tokens.add(token_id)
+            return allowed_tokens
+
+        return allowed_tokens
+
     def _allowed_tokens_for_param_string(self) -> set[int]:
         allowed_tokens = set()
-        MAX_STRING_LENGTH = 80  # à ajuster selon ton use case
-        # For strings, force an opening quote, then only allow
-        # content tokens that do not contain a raw quote. This prevents
-        # a single token from containing both a closing quote and
-        # trailing free-form text.
+        MAX_STRING_LENGTH = 80
+
         quote_id = self.token_to_id.get('"')
+
+        if utils.has_repeating_pattern(self.current_text):
+            # Force closing quote if we detect a repeating pattern,
+            # to prevent infinite loops.
+            return {quote_id} if quote_id is not None else set()
 
         if len(self.current_text) > MAX_STRING_LENGTH:
             # Force closing quote
@@ -169,8 +192,9 @@ class JSONStateMachine:
         if not self.current_text:
             # Start string with opening quote.
             return {quote_id} if quote_id is not None else set()
-        # Prevent the string to star with quote
+
         if not self.current_text.startswith('"'):
+            # Prevent generating unquoted strings.
             return set()
 
         for token_str, token_id in self.token_to_id.items():
@@ -179,9 +203,11 @@ class JSONStateMachine:
                 continue
             allowed_tokens.add(token_id)
 
-        # Closing quote must be a standalone token.
         if quote_id is not None:
+            # Closing quote must be a standalone token.
             allowed_tokens.add(quote_id)
+
+        
         return allowed_tokens
 
     def _allowed_tokens_for_param_number(self) -> set[int]:
@@ -238,27 +264,6 @@ class JSONStateMachine:
         if terminator_tokens:
             return digit_tokens | terminator_tokens
         return digit_tokens
-
-    def _allowed_tokens_for_parameter_value(self) -> set[int]:
-        allowed_tokens = set()
-        param_type = self._get_current_param_type()
-
-        if param_type == "string":
-            return self._allowed_tokens_for_param_string()
-
-        elif param_type == "number":
-            return self._allowed_tokens_for_param_number()
-
-        elif param_type == "boolean":
-            # Only allow 'true' or 'false'
-            allowed_tokens = set()
-            for token_str, token_id in self.token_to_id.items():
-                clean_token = token_str.replace('Ġ', ' ').replace(' ', ' ')
-                if clean_token in {"true", "false"}:
-                    allowed_tokens.add(token_id)
-            return allowed_tokens
-
-        return allowed_tokens
 
     def _allowed_tokens_for_function_name(self) -> set[int]:
         allowed_tokens = set()
