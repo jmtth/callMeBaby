@@ -118,7 +118,7 @@ def next_token_selection(model,
     return int(np.argmax(mask))
 
 
-def load_model(device: str = "cpu",
+def load_model(device: str = "mps",
                cache_dir: str = "./.hf_cache"
                ) -> Small_LLM_Model:
     """Load the small LLM model.
@@ -255,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Path where the generated responses should be written.",
     )
     args = parser.parse_args(argv)
-
+    
     run_cli(args.functions_definition, args.input_path, args.output_path)
     return 0
 

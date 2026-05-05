@@ -153,107 +153,101 @@ class JSONStateMachine:
                 )
         return allowed_tokens
 
+    def _allowed_tokens_for_param_string(self) -> set[int]:
+        allowed_tokens = set()
+        MAX_STRING_LENGTH = 80  # à ajuster selon ton use case
+        # For strings, force an opening quote, then only allow
+        # content tokens that do not contain a raw quote. This prevents
+        # a single token from containing both a closing quote and
+        # trailing free-form text.
+        quote_id = self.token_to_id.get('"')
+
+        if len(self.current_text) > MAX_STRING_LENGTH:
+            # Force closing quote
+            return {quote_id} if quote_id is not None else set()
+
+        if not self.current_text:
+            # Start string with opening quote.
+            return {quote_id} if quote_id is not None else set()
+        # Prevent the string to star with quote
+        if not self.current_text.startswith('"'):
+            return set()
+
+        for token_str, token_id in self.token_to_id.items():
+            clean_token = token_str.replace('Ġ', ' ').replace(' ', ' ')
+            if '"' in clean_token:
+                continue
+            allowed_tokens.add(token_id)
+
+        # Closing quote must be a standalone token.
+        if quote_id is not None:
+            allowed_tokens.add(quote_id)
+        return allowed_tokens
+
+    def _allowed_tokens_for_param_number(self) -> set[int]:
+        text = self.current_text
+        has_dot = "." in text
+        frac_len = len(text.split(".", 1)[1]) if has_dot else 0
+        target_decimals = self._get_target_decimals_for_current_param()
+
+        digit_tokens = set()
+        for token_id in utils.get_number_token_ids(self.token_to_id):
+            token_text = self.model.decode([token_id])
+            candidate = text + token_text
+
+            if not utils.is_valid_number_fragment(candidate):
+                continue
+
+            # If prompt has numeric literals, keep their decimal precision.
+            if target_decimals is not None:
+                if "e" in candidate:
+                    continue
+                if target_decimals == 0 and "." in candidate:
+                    continue
+                if target_decimals > 0 and "." in candidate:
+                    candidate_frac_len = len(candidate.split(".", 1)[1])
+                    if candidate_frac_len > target_decimals:
+                        continue
+            else:
+                # Fallback when prompt has no numeric literal.
+                if has_dot and frac_len >= 2:
+                    continue
+
+            digit_tokens.add(token_id)
+
+        if not utils.is_complete_number(text):
+            return digit_tokens
+
+        # Number is complete.
+        # Only allow termination when precision target is met.
+        if target_decimals is not None:
+            if target_decimals == 0:
+                if "." in text:
+                    return digit_tokens
+            else:
+                if "." not in text:
+                    return digit_tokens
+                if frac_len < target_decimals:
+                    return digit_tokens
+        else:
+            if has_dot and frac_len < 2:
+                return digit_tokens
+
+        terminator_tokens = utils.get_number_terminator_token_ids(
+            self.token_to_id)
+        if terminator_tokens:
+            return digit_tokens | terminator_tokens
+        return digit_tokens
+
     def _allowed_tokens_for_parameter_value(self) -> set[int]:
         allowed_tokens = set()
         param_type = self._get_current_param_type()
 
         if param_type == "string":
-            # For strings, force an opening quote, then only allow
-            # content tokens that do not contain a raw quote. This prevents
-            # a single token from containing both a closing quote and
-            # trailing free-form text.
-            quote_id = self.token_to_id.get('"')
+            return self._allowed_tokens_for_param_string()
 
-            if not self.current_text:
-                # Start string with opening quote.
-                return {quote_id} if quote_id is not None else set()
-
-            if not self.current_text.startswith('"'):
-                return set()
-
-            for token_str, token_id in self.token_to_id.items():
-                clean_token = token_str.replace('Ġ', ' ').replace(' ', ' ')
-                if '"' in clean_token:
-                    continue
-                allowed_tokens.add(token_id)
-
-            # Closing quote must be a standalone token.
-            if quote_id is not None:
-                allowed_tokens.add(quote_id)
-            # Safety 1: limit maximum string length to prevent runaway tokens
-            max_chars = 200
-            # current_text includes the opening quote
-            if len(self.current_text) >= max_chars:
-                return {quote_id} if quote_id is not None else set()
-
-            # Prevent runaway repetition: disallow a token if it already
-            # appears consecutively more than `max_repeat` times at the end
-            # of the buffer. This helps stop repeating identical tokens.
-            max_repeat = 6
-            if len(self.buffer_tokens) >= max_repeat - 1:
-                recent = self.buffer_tokens[-(max_repeat - 1):]
-                filtered = set()
-                for t in allowed_tokens:
-                    if all(rt == t for rt in recent):
-                        continue
-                    filtered.add(t)
-                return filtered
-
-            return allowed_tokens
         elif param_type == "number":
-            text = self.current_text
-            has_dot = "." in text
-            frac_len = len(text.split(".", 1)[1]) if has_dot else 0
-            target_decimals = self._get_target_decimals_for_current_param()
-
-            digit_tokens = set()
-            for token_id in utils.get_number_token_ids(self.token_to_id):
-                token_text = self.model.decode([token_id])
-                candidate = text + token_text
-
-                if not utils.is_valid_number_fragment(candidate):
-                    continue
-
-                # If prompt has numeric literals, keep their decimal precision.
-                if target_decimals is not None:
-                    if "e" in candidate:
-                        continue
-                    if target_decimals == 0 and "." in candidate:
-                        continue
-                    if target_decimals > 0 and "." in candidate:
-                        candidate_frac_len = len(candidate.split(".", 1)[1])
-                        if candidate_frac_len > target_decimals:
-                            continue
-                else:
-                    # Fallback when prompt has no numeric literal.
-                    if has_dot and frac_len >= 2:
-                        continue
-
-                digit_tokens.add(token_id)
-
-            if not utils.is_complete_number(text):
-                return digit_tokens
-
-            # Number is complete.
-            # Only allow termination when precision target is met.
-            if target_decimals is not None:
-                if target_decimals == 0:
-                    if "." in text:
-                        return digit_tokens
-                else:
-                    if "." not in text:
-                        return digit_tokens
-                    if frac_len < target_decimals:
-                        return digit_tokens
-            else:
-                if has_dot and frac_len < 2:
-                    return digit_tokens
-
-            terminator_tokens = utils.get_number_terminator_token_ids(
-                self.token_to_id)
-            if terminator_tokens:
-                return digit_tokens | terminator_tokens
-            return digit_tokens
+            return self._allowed_tokens_for_param_number()
 
         elif param_type == "boolean":
             # Only allow 'true' or 'false'
@@ -288,6 +282,8 @@ class JSONStateMachine:
         current_generated_text: str,
         token_to_id: dict[str, int],
     ) -> set[int]:
+        # if the current generated text already matches the target string
+        # only allow a space or end token to prevent further generation
         if current_generated_text == target_string:
             space_id = token_to_id.get(" ")
             return {space_id} if space_id is not None else set()
