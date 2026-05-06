@@ -10,6 +10,7 @@ from llm_sdk import Small_LLM_Model
 from src.JSONStateMachine import JSONStateMachine
 from src.functions_manager import FunctionsDefinition
 from src.models import JSONState
+from src import utils
 
 
 def build_prompt(functions_def: FunctionsDefinition, prompt: str) -> str:
@@ -209,6 +210,9 @@ def generate_response(functions_def: FunctionsDefinition, input_prompt: str, mod
                 tokens_ids.append(new_token_id)
                 response_tokens_ids.append(new_token_id)
                 current_text += model.decode([new_token_id])
+                if fsm.param_repeat_pattern:
+                    print(f"FSM----Current text: '{current_text}' with detected repeat pattern: '{fsm.param_repeat_pattern}'")
+                    response_tokens_ids = utils.remove_repeating_pattern(model, response_tokens_ids, fsm.param_repeat_pattern)
 
     return model.decode(response_tokens_ids)
 
@@ -223,7 +227,7 @@ def run_cli(functions_definition_path: str, input_path: str | None = None, outpu
         response = generate_response(functions_def, prompt, model=model)
         print(f"Prompt: {prompt}\nResponse: {response}\n---")
         # results.append(json.loads(response) if response.startswith("{") else {"response": response})
-        results.append(response)
+        results.append(json.loads(response))
 
     if output_path is not None:
         Path(output_path).write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -255,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Path where the generated responses should be written.",
     )
     args = parser.parse_args(argv)
-    
+
     run_cli(args.functions_definition, args.input_path, args.output_path)
     return 0
 

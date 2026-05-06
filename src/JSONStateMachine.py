@@ -1,3 +1,5 @@
+import json
+
 from src.models import JSONState
 from src import utils
 
@@ -30,19 +32,23 @@ class JSONStateMachine:
                 return enc0.tolist()
             return list(enc0)
 
+        # Escape user prompt for insertion inside a JSON string value.
+        escaped_prompt = json.dumps(prompt, ensure_ascii=False)[1:-1]
+
         # Targets encodes
         self.targets = {
             JSONState.START: _norm_encode("{"),
             JSONState.PROMPT_KEY: _norm_encode('"prompt": "'),
             JSONState.NAME_KEY: _norm_encode('", "name": "'),
             JSONState.PARAMS_KEY: _norm_encode('", "parameters": {"'),
-            JSONState.PROMPT_VAL: _norm_encode(prompt),
+            JSONState.PROMPT_VAL: _norm_encode(escaped_prompt),
             JSONState.PARAM_COLON: _norm_encode('": '),
             JSONState.PARAM_COMMA: _norm_encode(', "'),
             JSONState.END: _norm_encode("}}"),
         }
 
         self.progress = 0
+        self.param_repeat_pattern = ""
         self.current_param_nb = 0
         self.total_params = 0  # Set when function name is known
         self.prompt_decimal_counts = utils.extract_decimal_counts(prompt)
@@ -88,6 +94,18 @@ class JSONStateMachine:
             return None
 
         return values[idx].type
+    
+    def _get_current_param_name(self) -> str | None:
+        params = self._get_current_function_params()
+        if params is None:
+            return None
+
+        idx = self._get_adjusted_param_index()
+        values = [*params.values()]
+        if idx < 0 or idx >= len(values):
+            return None
+
+        return values[idx].name
 
     def _get_current_param_index(self) -> int | None:
         if self.current_function_name not in self.functions_names:
@@ -180,9 +198,10 @@ class JSONStateMachine:
 
         quote_id = self.token_to_id.get('"')
 
-        if utils.has_repeating_pattern(self.current_text):
+        if self.param_repeat_pattern:
             # Force closing quote if we detect a repeating pattern,
             # to prevent infinite loops.
+            self.param_repeat_pattern = ""
             return {quote_id} if quote_id is not None else set()
 
         if len(self.current_text) > MAX_STRING_LENGTH:
@@ -203,11 +222,19 @@ class JSONStateMachine:
                 continue
             allowed_tokens.add(token_id)
 
+        # if self._get_current_param_name == "replacement":
+        #     allowed_tokens.update(
+        #         self._get_allowed_tokens_for_string(
+        #             self.model.decode(self.targets[JSONState.PROMPT_VAL]),
+        #             self.current_text,
+        #             self.token_to_id,
+        #             )
+        #             )
+
         if quote_id is not None:
             # Closing quote must be a standalone token.
             allowed_tokens.add(quote_id)
 
-        
         return allowed_tokens
 
     def _allowed_tokens_for_param_number(self) -> set[int]:
@@ -368,7 +395,16 @@ class JSONStateMachine:
 
         elif self.state == JSONState.PARAM_VAL:
             param_type = self._get_current_param_type()
+            self.param_repeat_pattern = utils.get_repeating_pattern(self.current_text)
             if (
+                param_type == "string"
+                and self.param_repeat_pattern
+            ):
+                print(f"Detected repeating pattern in parameter value: '{self.current_text}'")
+                print(f"Stripping pattern '{self.param_repeat_pattern}' from current text to break pattern.")
+                self.current_text = self.current_text[:-len(self.param_repeat_pattern)]
+                print(f"Current text after stripping token: '{self.current_text}'")
+            elif (
                 param_type == "string"
                 and len(self.current_text) > 1
                 and self.current_text.startswith('"')
