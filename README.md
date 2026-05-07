@@ -116,3 +116,16 @@ en IDs numériques pour que le réseau de neurones puisse les traiter.
 > En utilisant mes allowed_tokens, 
 > je force le modèle à choisir uniquement parmi les IDs qui correspondent 
 > à des séquences de caractères valides pour mon schéma JSON.
+
+# Difficulté
+Lors de la génération de texte par le model il est difficile de lui
+trouver des conditions d'arrêts de génération selon le type de donnée
+qu'il doit générer et le prompt ces conditions peuvent fortement changer.
+Principaux points:
+ - type number
+  - int, float, scientifique (different test)
+  - précision de la partie fractionnaire (check the size of frac part with regex)
+ - type string
+    - nom des fonctions (list(functions_name))
+    - répétitions des `regex` (detect repeating patterns and remove it)
+    - mauvaise interprétation des `replacement` (list(words_in_prompt))

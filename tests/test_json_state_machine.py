@@ -55,13 +55,13 @@ def test_prompt_target_escapes_quotes_for_json_string():
     funcs = DummyFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
 
-    prompt = 'Replace all numbers in "Hello 34 I\'m 233 years old" with NUMBERS'
+    prompt = 'Replace "Hello 34 I\'m 233 years old" '
     sm = JSONStateMachine(model, funcs, token_to_id, prompt=prompt)
 
     encoded_prompt = sm.targets[JSONState.PROMPT_VAL]
     decoded_prompt = model.decode(encoded_prompt)
 
-    assert decoded_prompt == 'Replace all numbers in \\"Hello 34 I\'m 233 years old\\" with NUMBERS'
+    assert decoded_prompt == 'Replace \\"Hello 34 I\'m 233 years old\\" '
 
 
 def test_allowed_tokens_for_string_value_uses_actual_token_ids():

@@ -3,7 +3,7 @@ from llm_sdk import Small_LLM_Model
 
 def get_repeating_pattern(text: str,
                           min_len: int = 3,
-                          max_repeats: int = 10) -> str:
+                          max_repeats: int = 2) -> str:
     """Check if the text has a repeating pattern of 'cat' at the end.
 
     It is best not to research patterns shorter 3 characters,
@@ -25,7 +25,6 @@ def get_repeating_pattern(text: str,
         start = len(text) - len_pattern * 2
         text_slice = text[start:start + len_pattern]
         while start >= 0 and text_slice == text_pattern:
-            print(f"Found repeating pattern: '{text_pattern}' at position {start} in '{text}'")
             pattern_count += 1
             text_slice = text[start:start + len_pattern]
             if pattern_count >= max_repeats:
@@ -35,8 +34,19 @@ def get_repeating_pattern(text: str,
     return ""
 
 
-def remove_repeating_pattern(model: Small_LLM_Model,response: list[int], pattern: str) -> list[int]:
-    """Remove the repeating pattern from the end of the token list."""
+def remove_repeating_pattern(model: Small_LLM_Model,
+                             response: list[int],
+                             pattern: str) -> list[int]:
+    """Remove the repeating pattern from the end of the token list.
+
+    args:
+        model (Small_LLM_Model): the model used to encode the pattern.
+        response (list[int]): the list of token ids representing the response.
+        pattern (str): the repeating pattern to remove.
+
+    returns:
+        list[int]: the list of token ids with the repeating pattern removed.
+    """
     if not pattern:
         return response
     enc0 = model.encode(pattern)[0]
@@ -46,6 +56,5 @@ def remove_repeating_pattern(model: Small_LLM_Model,response: list[int], pattern
         pattern_tokens = list(enc0)
     pattern_len = len(pattern_tokens)
     if response[-pattern_len:] == pattern_tokens:
-        print(f"Removing repeating pattern tokens: {pattern_tokens} from response: {response}")
         response = response[:-pattern_len]
     return response

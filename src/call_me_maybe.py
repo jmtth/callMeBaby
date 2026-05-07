@@ -21,7 +21,7 @@ def build_prompt(functions_def: FunctionsDefinition, prompt: str) -> str:
     functions_def (FunctionsDefinition): The definitions of the functions
     to include in the prompt.
     prompt (str): The user prompt to which the model should respond.
-    
+
     Returns:
     str: The complete prompt to send to the model,
     including instructions, function definitions, and the user prompt.
@@ -103,8 +103,14 @@ def next_token_selection(model,
                          current_ids: list[int],
                          allowed_ids: set[int]
                          ) -> int:
-    """Given the current token ids and a set of allowed token ids,
-    return the next token id
+    """Select the next token id with the best probability
+
+    args:
+        model: llm_sdk
+        current_ids: Ids list of current prompt
+        allowed_ids: list of ids of allowed token
+    return:
+        int: the choosen token
     """
     logits = model.get_logits_from_input_ids(current_ids)
     logits_np = np.array(logits)
