@@ -129,6 +129,7 @@ def load_model(device: str = "mps",
                cache_dir: str = "./.hf_cache"
                ) -> Small_LLM_Model:
     """Load the small LLM model.
+
     First, try to load with local_files_only=True to avoid downloads.
     If the model files are not found locally, local_files_only=False.
     """

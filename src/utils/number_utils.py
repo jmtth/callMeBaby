@@ -3,6 +3,7 @@ import re
 
 def extract_decimal_counts(string: str) -> list[int]:
     """Extract the number of decimal places for each number in a string.
+
     For integers, count as 1 (to allow at least one decimal place if needed).
     For floats, count the number of digits after the decimal point.
     if the number has no decimal part, count as 1 to allow
@@ -17,6 +18,7 @@ def extract_decimal_counts(string: str) -> list[int]:
 
 def is_valid_number_fragment(text: str) -> bool:
     """Check if the text is a valid fragment of a number.
+
     Valid fragments can be empty, contain digits, a single decimal point,
     a single 'e' for scientific notation, and a '-' for negative numbers.
     The '-' can only be at the start or immediately after an 'e'.
@@ -58,6 +60,7 @@ def is_valid_number_fragment(text: str) -> bool:
 
 def is_complete_number(text: str) -> bool:
     """Check if the text is a complete and valid number.
+
     A complete number can be an integer or a float,
     and may include an optional leading '-' for negatives
     and an optional 'e' for scientific notation.

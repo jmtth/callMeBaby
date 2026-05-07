@@ -130,7 +130,8 @@ class JSONStateMachine:
 
     def is_in_fixed_sequence(self) -> bool:
         """Check if we are currently in a fixed sequence of tokens
-        (like the JSON structure or the prompt)."""
+        (like the JSON structure or the prompt).
+        """
         return self.state in self.targets
 
     def get_allowed_tokens(self) -> set[int]:
@@ -343,7 +344,8 @@ class JSONStateMachine:
 
     def update(self, token_id: int) -> bool:
         """Update the state machine with the new token.
-        check if the token is valid in the current state,
+
+        Check if the token is valid in the current state,
         update the state accordingly,
         and return whether to keep the token or not.
 
