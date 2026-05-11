@@ -137,7 +137,7 @@ def load_model(cache_dir: str = "./.hf_cache") -> Small_LLM_Model:
     if system == 'linux':
         device = "cpu"
     else:
-        device = "cuda"
+        device = "mps"
     try:
         return Small_LLM_Model(device=device,
                                cache_dir=cache_dir,

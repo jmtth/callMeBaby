@@ -45,6 +45,11 @@ def is_valid_number_fragment(text: str) -> bool:
     if e_pos != -1 and text.find(".", e_pos) != -1:
         return False
 
+    if "e" in text:
+        left, _ = text.split("e", 1)
+        if left in {"", "-", ".", "-."} and text not in {"e", "e-"}:
+            return False
+
     if "-" in text:
         for i, ch in enumerate(text):
             if ch != "-":
@@ -91,8 +96,5 @@ def is_complete_number(text: str) -> bool:
         if right[0] in {"+", "-"}:
             right = right[1:]
         return right.isdigit()
-
-    if text in {"-", ".", "-."}:
-        return False
 
     return any(ch.isdigit() for ch in text)

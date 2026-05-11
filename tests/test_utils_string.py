@@ -10,7 +10,7 @@ class FakeModel(Small_LLM_Model):
         if system == 'linux':
             device = "cpu"
         else:
-            device = "cuda"
+            device = "mps"
         super().__init__(device=device)
 
     def encode(self, text) -> Tensor:
