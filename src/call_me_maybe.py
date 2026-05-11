@@ -127,14 +127,17 @@ def next_token_selection(model,
     return int(np.argmax(mask))
 
 
-def load_model(device: str = "mps",
-               cache_dir: str = "./.hf_cache"
-               ) -> Small_LLM_Model:
+def load_model(cache_dir: str = "./.hf_cache") -> Small_LLM_Model:
     """Load the small LLM model.
 
     First, try to load with local_files_only=True to avoid downloads.
     If the model files are not found locally, local_files_only=False.
     """
+    system = __import__("platform").system().lower()
+    if system == 'linux':
+        device = "cpu"
+    else:
+        device = "cuda"
     try:
         return Small_LLM_Model(device=device,
                                cache_dir=cache_dir,

@@ -24,8 +24,10 @@ def get_number_token_ids(token_to_id: dict) -> set[int]:
     allowed = set()
     for token_str, token_id in token_to_id.items():
         clean_t = token_str.replace('Ġ', ' ').replace(' ', ' ')
+        # skip empty tokens after cleaning
         if clean_t == "":
             continue
+        # exclude tokens that contain spaces
         if " " in clean_t:
             continue
         if is_valid_number_fragment(clean_t):

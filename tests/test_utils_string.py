@@ -5,6 +5,14 @@ from typing import cast
 
 
 class FakeModel(Small_LLM_Model):
+    def __init__(self):
+        system = __import__("platform").system().lower()
+        if system == 'linux':
+            device = "cpu"
+        else:
+            device = "cuda"
+        super().__init__(device=device)
+
     def encode(self, text) -> Tensor:
         # return a value compatible with the base class return type for typing
         return cast(Tensor, [[ord(c) for c in text]])
@@ -22,6 +30,8 @@ def test_get_repeating_pattern():
     assert utils.get_repeating_pattern(
         "ababab", min_len=2, max_repeats=3) == "ab"
     assert utils.get_repeating_pattern("") == ""
+    assert utils.get_repeating_pattern(
+        "qwertyu", min_len=3, max_repeats=2) == ""
 
 
 def test_remove_repeating_pattern():
@@ -45,3 +55,22 @@ def test_remove_repeating_pattern():
     pattern = "a"
     new_response = utils.remove_repeating_pattern(model, response, pattern)
     assert new_response == [ord(c) for c in "aaaaa"]
+
+
+def test_remove_repeating_pattern_empty_pattern():
+    model = FakeModel()
+    response = [ord(c) for c in "catcat"]
+    new_response = utils.remove_repeating_pattern(model, response, "")
+    assert new_response == response
+
+
+def test_remove_repeating_pattern_tensor():
+    from unittest.mock import MagicMock
+    mock_model = MagicMock()
+    tensor_mock = MagicMock()
+    tensor_mock.tolist.return_value = [ord(c) for c in "cat"]
+    mock_model.encode.return_value = [tensor_mock]
+
+    response = [ord(c) for c in "catcatcat"]
+    new_response = utils.remove_repeating_pattern(mock_model, response, "cat")
+    assert new_response == [ord(c) for c in "catcat"]
