@@ -115,17 +115,3 @@ class FunctionsDefinition:
         )
         return OutputSchema
 
-
-def main():
-    functions_def = FunctionsDefinition.from_json(
-        "data/input/functions_definition.json")
-    print(functions_def.list_functions_name())
-    name = "fn_substitute_string_with_regex"
-    print(functions_def.get_function_by_name(name))
-    print(functions_def.get_function_description_by_name(name))
-    print(functions_def.get_function_parameters_by_name(name))
-    print(functions_def.get_nb_parameters(name))
-
-
-if __name__ == "__main__":
-    main()

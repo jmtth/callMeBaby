@@ -42,6 +42,7 @@ def test_is_valid_number_fragment():
     assert utils.is_valid_number_fragment("1-2") is False
     assert utils.is_valid_number_fragment("1e-2-3") is False
 
+
 def test_is_complete_number():
     assert utils.is_complete_number("123") is True
     assert utils.is_complete_number("123.45") is True
