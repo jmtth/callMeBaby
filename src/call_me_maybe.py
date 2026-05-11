@@ -82,22 +82,27 @@ def get_filtered_vocab_for_functions(functions_names: list[str],
 
     syntax_tokens = [
         '{"', '":', ',"', '": "', '",', '[', ']', '": ', ' {',
-        'true', 'false', 'null', ',', ' '
+        'true', 'false', 'null', ',', ' ', '"', '\\', '{', '}', ':'
     ]
     desciptions_token = [token for desc in functions_descriptions.values()
                          for token in desc.split()]
-
+    alphanumeric_tokens = set("abcdefghijklmnopqrstuvwxyz"
+                              "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                              "0123456789")
     filtered_vocab = dict[str, int]()
     for t_str, t_id in token_to_id.items():
         clean_t = t_str.replace('Ġ', ' ').replace(' ', ' ')
+        is_alphanumeric = all(ch in alphanumeric_tokens for ch in clean_t)
         is_syntax = any(syntax == clean_t for syntax in syntax_tokens)
         is_part_of_fn = any(clean_t in fn for fn in functions_names)
         is_part_of_desc = any(clean_t in desc for desc in desciptions_token)
         is_digit = clean_t.strip().isdigit() or clean_t in [".", "-", "e"]
 
-        if is_syntax or is_part_of_fn or is_digit or is_part_of_desc:
-            filtered_vocab[clean_t] = t_id
-
+        if is_syntax or is_part_of_fn or is_digit or is_part_of_desc or is_alphanumeric:
+            # Keep original token string as key to avoid collisions between
+            # different raw tokens that normalize to the same cleaned text.
+            filtered_vocab[t_str] = t_id
+    print(f"vocab size: {len(token_to_id)}, filtered vocab size: {len(filtered_vocab)}t")
     return filtered_vocab
 
 
@@ -213,9 +218,9 @@ def generate_response(functions_def: FunctionsDefinition, input_prompt: str, mod
         vocab = json.load(f)
     token_to_id = _build_token_to_id(vocab)
 
-    #functions_names = functions_def.list_functions_name()
-    #functions_descriptions = {fn.name: fn.description for fn in functions_def.functions}
-    #relevant_tokens = get_filtered_vocab_for_functions(functions_names, functions_descriptions, token_to_id)
+    # functions_names = functions_def.list_functions_name()
+    # functions_descriptions = {fn.name: fn.description for fn in functions_def.functions}
+    # relevant_tokens = get_filtered_vocab_for_functions(functions_names, functions_descriptions, token_to_id)
 
     fsm = JSONStateMachine(model, functions_def, token_to_id, input_prompt)
 
@@ -279,18 +284,20 @@ def run_cli(functions_definition_path: str, input_path: str | None = None, outpu
     results: list[dict[str, str]] = []
     for prompt in prompts:
         response = generate_response(functions_def, prompt, model=model)
+        try:
+            response_dict = json.loads(response)
+        except json.JSONDecodeError as exc:
+            print(f"Warning: Generated response is not valid JSON: {exc}", file=__import__("sys").stderr)
+            results.append({"prompt": prompt, "error": "Invalid generated JSON"})
+            continue
+
         OutputModel = functions_def.get_output_function_model(
-            json.loads(response)['name'])
-        response_dict = json.loads(response)
+            response_dict['name'])
         try:
             OutputModel.model_validate(response_dict)
         except ValidationError as e:
             print(e)
-        try:
-            results.append(json.loads(response))
-        except json.JSONDecodeError as exc:
-            print(f"Warning: Generated response is not valid JSON: {exc}", file=__import__("sys").stderr)
-            results.append({"prompt": prompt, "error": "Invalid generated JSON"})
+        results.append(response_dict)
 
     if output_path is not None:
         Path(output_path).write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
