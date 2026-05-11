@@ -1,8 +1,14 @@
 import json
-from typing import Dict, List
+from typing import Dict, List, Literal, Any
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, create_model
 
+# JSON tyope mapping
+TYPE_MAPPING = {
+    "number": float,
+    "string": str,
+    "boolean": bool,
+}
 
 class Parameter(BaseModel):
     """Class representing a function parameter."""
@@ -92,6 +98,22 @@ class FunctionsDefinition:
                 prompt += f"    - {param_name} (type: {param.type})\n"
             prompt += "\n"
         return prompt
+
+    def get_output_function_model(self, name: str) -> type[BaseModel]:
+        func = self.get_function_by_name(name)
+        params_fields: dict[str, Any] = {
+            param_name: (TYPE_MAPPING[param.type], ...)
+            for param_name, param in func.parameters.items()
+        }
+        ParamsModel: type[BaseModel] = create_model(f"{func.name}_params", **params_fields)
+        OutputSchema: type[BaseModel] = create_model(
+            f"{func.name}_output",
+            prompt=(str, ...),
+            name=(Literal[func.name], func.name),
+            parameters=(ParamsModel, ...),
+            __base__=BaseModel,
+        )
+        return OutputSchema
 
 
 def main():

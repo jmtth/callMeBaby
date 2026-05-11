@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from pydantic import ValidationError
+
 
 import numpy as np
 from llm_sdk import Small_LLM_Model
@@ -144,19 +146,35 @@ def load_model(device: str = "mps",
 
 
 def _load_prompts(input_path: str | None) -> list[str]:
+    """Load prompts from input path or stdin.
+    
+    If input_path is provided, it must be valid JSON containing prompts.
+    Raises ValueError if file is missing or JSON is invalid.
+    
+    Args:
+        input_path: Path to JSON file with prompts, or None for stdin.
+        
+    Returns:
+        List of prompt strings.
+        
+    Raises:
+        ValueError: If file not found or JSON invalid.
+    """
     if input_path is None:
         return [input("input_prompt:")]
+    
     try:
         raw_text = Path(input_path).read_text(encoding="utf-8").strip()
     except FileNotFoundError as exc:
-        raise ValueError(f"File not found: {input_path}") from exc
+        raise ValueError(f"Input file not found: {input_path}") from exc
+    
     if not raw_text:
-        return [""]
-
+        raise ValueError(f"Input file is empty: {input_path}")
+    
     try:
         data = json.loads(raw_text)
-    except json.JSONDecodeError:
-        return [raw_text]
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in {input_path}: {exc}") from exc
 
     if isinstance(data, str):
         return [data]
@@ -165,16 +183,19 @@ def _load_prompts(input_path: str | None) -> list[str]:
             return [str(data["prompt"])]
         if "prompts" in data and isinstance(data["prompts"], list):
             return [str(item) for item in data["prompts"]]
-        return [json.dumps(data)]
+        raise ValueError(f"JSON dict must contain 'prompt' or 'prompts' key: {input_path}")
     if isinstance(data, list):
         prompts: list[str] = []
         for item in data:
             if isinstance(item, dict) and "prompt" in item:
                 prompts.append(str(item["prompt"]))
+            elif isinstance(item, str):
+                prompts.append(item)
             else:
-                prompts.append(str(item))
+                raise ValueError(f"List items must be strings or dicts with 'prompt' key: {input_path}")
         return prompts
-    return [raw_text]
+    
+    raise ValueError(f"JSON must be string, dict, or list: {input_path}")
 
 
 def generate_response(functions_def: FunctionsDefinition, input_prompt: str, model=None, max_res_tokens: int = 110) -> str:
@@ -210,7 +231,9 @@ def generate_response(functions_def: FunctionsDefinition, input_prompt: str, mod
             allowed_tokens = fsm.get_allowed_tokens()
             if not allowed_tokens or fsm.state == JSONState.END:
                 break
-            new_token_id = next_token_selection(model, tokens_ids, allowed_tokens)
+            new_token_id = next_token_selection(model,
+                                                tokens_ids,
+                                                allowed_tokens)
 
             keep_token = fsm.update(new_token_id)
             if keep_token:
@@ -218,23 +241,53 @@ def generate_response(functions_def: FunctionsDefinition, input_prompt: str, mod
                 response_tokens_ids.append(new_token_id)
                 current_text += model.decode([new_token_id])
                 if fsm.param_repeat_pattern:
-                    print(f"FSM----Current text: '{current_text}' with detected repeat pattern: '{fsm.param_repeat_pattern}'")
-                    response_tokens_ids = utils.remove_repeating_pattern(model, response_tokens_ids, fsm.param_repeat_pattern)
+                    response_tokens_ids = utils.remove_repeating_pattern(model,
+                                                                         response_tokens_ids,
+                                                                         fsm.param_repeat_pattern)
 
     return model.decode(response_tokens_ids)
 
 
 def run_cli(functions_definition_path: str, input_path: str | None = None, output_path: str | None = None) -> list[dict[str, str]]:
-    functions_def = FunctionsDefinition.from_json(functions_definition_path)
+    """Run CLI function calling pipeline with error handling.
+    
+    Args:
+        functions_definition_path: Path to JSON file with function definitions.
+        input_path: Path to JSON file with prompts, or None for stdin.
+        output_path: Path to write output JSON, or None for stdout.
+        
+    Returns:
+        List of results (dict with prompt and response).
+    """
+    try:
+        functions_def = FunctionsDefinition.from_json(functions_definition_path)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"Error loading functions definition: {exc}", file=__import__("sys").stderr)
+        raise
+    
+    try:
+        prompts = _load_prompts(input_path)
+    except ValueError as exc:
+        print(f"Error loading input prompts: {exc}", file=__import__("sys").stderr)
+        raise
+    
     model = load_model()
-    prompts = _load_prompts(input_path)
 
     results: list[dict[str, str]] = []
     for prompt in prompts:
         response = generate_response(functions_def, prompt, model=model)
-        print(f"Prompt: {prompt}\nResponse: {response}\n---")
-        # results.append(json.loads(response) if response.startswith("{") else {"response": response})
-        results.append(json.loads(response))
+        OutputModel = functions_def.get_output_function_model(
+            json.loads(response)['name'])
+        response_dict = json.loads(response)
+        try:
+            OutputModel.model_validate(response_dict)
+        except ValidationError as e:
+            print(e)
+        try:
+            results.append(json.loads(response))
+        except json.JSONDecodeError as exc:
+            print(f"Warning: Generated response is not valid JSON: {exc}", file=__import__("sys").stderr)
+            results.append({"prompt": prompt, "error": "Invalid generated JSON"})
 
     if output_path is not None:
         Path(output_path).write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
