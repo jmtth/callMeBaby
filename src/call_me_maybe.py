@@ -49,7 +49,7 @@ def _build_token_to_id(vocab: dict) -> dict[str, int]:
     to their corresponding IDs.
     """
     # Shape A: {"!": 0, "the": 1, ...}
-    if all(isinstance(k, str) and isinstance(v, (int, str)) 
+    if all(isinstance(k, str) and isinstance(v, (int, str))
            for k, v in vocab.items()):
         try:
             return {k: int(v) for k, v in vocab.items()}
@@ -60,50 +60,6 @@ def _build_token_to_id(vocab: dict) -> dict[str, int]:
         return {v: int(k) for k, v in vocab.items()}
     except (TypeError, ValueError) as exc:
         raise ValueError("Unsupported vocab format for conversion") from exc
-
-
-def get_filtered_vocab_for_functions(functions_names: list[str],
-                                     functions_descriptions: dict[str, str],
-                                     token_to_id: dict[str, int]
-                                     ) -> dict[str, int]:
-    """Return a smaller filtered list of (token_str, token_id)
-    that are relevant for the function names and syntax.
-
-    Reducing the vocabulary allows for better performance.
-
-    Args:
-        functions_names: list of function names to include in the vocab.
-        functions_descriptions: dictionary mapping function names.
-        token_to_id: the original vocabulary mapping.
-
-    Returns:
-        dict[str, int]: The reduced vocabulary mapping.
-    """
-
-    syntax_tokens = [
-        '{"', '":', ',"', '": "', '",', '[', ']', '": ', ' {',
-        'true', 'false', 'null', ',', ' ', '"', '\\', '{', '}', ':'
-    ]
-    desciptions_token = [token for desc in functions_descriptions.values()
-                         for token in desc.split()]
-    alphanumeric_tokens = set("abcdefghijklmnopqrstuvwxyz"
-                              "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                              "0123456789")
-    filtered_vocab = dict[str, int]()
-    for t_str, t_id in token_to_id.items():
-        clean_t = t_str.replace('Ġ', ' ').replace(' ', ' ')
-        is_alphanumeric = all(ch in alphanumeric_tokens for ch in clean_t)
-        is_syntax = any(syntax == clean_t for syntax in syntax_tokens)
-        is_part_of_fn = any(clean_t in fn for fn in functions_names)
-        is_part_of_desc = any(clean_t in desc for desc in desciptions_token)
-        is_digit = clean_t.strip().isdigit() or clean_t in [".", "-", "e"]
-
-        if is_syntax or is_part_of_fn or is_digit or is_part_of_desc or is_alphanumeric:
-            # Keep original token string as key to avoid collisions between
-            # different raw tokens that normalize to the same cleaned text.
-            filtered_vocab[t_str] = t_id
-    print(f"vocab size: {len(token_to_id)}, filtered vocab size: {len(filtered_vocab)}t")
-    return filtered_vocab
 
 
 def next_token_selection(model,
@@ -132,7 +88,8 @@ def next_token_selection(model,
     return int(np.argmax(mask))
 
 
-def load_model(cache_dir: str = "./.hf_cache") -> Small_LLM_Model:
+def load_model(cache_dir: str = "./.hf_cache") -> tuple[Small_LLM_Model,
+                                                        dict[str, int]]:
     """Load the small LLM model.
 
     First, try to load with local_files_only=True to avoid downloads.
@@ -144,41 +101,46 @@ def load_model(cache_dir: str = "./.hf_cache") -> Small_LLM_Model:
     else:
         device = "mps"
     try:
-        return Small_LLM_Model(device=device,
-                               cache_dir=cache_dir,
-                               local_files_only=True)
+        model = Small_LLM_Model(device=device,
+                                cache_dir=cache_dir,
+                                local_files_only=True)
     except Exception:
-        return Small_LLM_Model(device=device,
-                               cache_dir=cache_dir,
-                               local_files_only=False)
+        model = Small_LLM_Model(device=device,
+                                cache_dir=cache_dir,
+                                local_files_only=False)
+    vocab_path = model.get_path_to_vocab_file()
+    with open(vocab_path, encoding="utf-8") as f:
+        vocab = json.load(f)
+    token_to_id = _build_token_to_id(vocab)
+    return (model, token_to_id)
 
 
 def _load_prompts(input_path: str | None) -> list[str]:
     """Load prompts from input path or stdin.
-    
+
     If input_path is provided, it must be valid JSON containing prompts.
     Raises ValueError if file is missing or JSON is invalid.
-    
+
     Args:
         input_path: Path to JSON file with prompts, or None for stdin.
-        
+
     Returns:
         List of prompt strings.
-        
+
     Raises:
         ValueError: If file not found or JSON invalid.
     """
     if input_path is None:
         return [input("input_prompt:")]
-    
+
     try:
         raw_text = Path(input_path).read_text(encoding="utf-8").strip()
     except FileNotFoundError as exc:
         raise ValueError(f"Input file not found: {input_path}") from exc
-    
+
     if not raw_text:
         raise ValueError(f"Input file is empty: {input_path}")
-    
+
     try:
         data = json.loads(raw_text)
     except json.JSONDecodeError as exc:
@@ -202,27 +164,21 @@ def _load_prompts(input_path: str | None) -> list[str]:
             else:
                 raise ValueError(f"List items must be strings or dicts with 'prompt' key: {input_path}")
         return prompts
-    
+
     raise ValueError(f"JSON must be string, dict, or list: {input_path}")
 
 
-def generate_response(functions_def: FunctionsDefinition, input_prompt: str, model=None, max_res_tokens: int = 110) -> str:
+def generate_response(functions_def: FunctionsDefinition,
+                      input_prompt: str,
+                      llm=None,
+                      max_res_tokens: int = 110) -> str:
     prompt = build_prompt(functions_def, input_prompt)
-    if model is None:
-        model = load_model()
-    tokens_ids = model.encode(prompt)[0].tolist()
+    if llm is None:
+        llm = load_model()
+    tokens_ids = llm[0].encode(prompt)[0].tolist()
     response_tokens_ids: list[int] = []
 
-    vocab_path = model.get_path_to_vocab_file()
-    with open(vocab_path, encoding="utf-8") as f:
-        vocab = json.load(f)
-    token_to_id = _build_token_to_id(vocab)
-
-    # functions_names = functions_def.list_functions_name()
-    # functions_descriptions = {fn.name: fn.description for fn in functions_def.functions}
-    # relevant_tokens = get_filtered_vocab_for_functions(functions_names, functions_descriptions, token_to_id)
-
-    fsm = JSONStateMachine(model, functions_def, token_to_id, input_prompt)
+    fsm = JSONStateMachine(llm[0], functions_def, llm[1], input_prompt)
 
     current_text = ""
     for i in range(max_res_tokens):
@@ -230,7 +186,7 @@ def generate_response(functions_def: FunctionsDefinition, input_prompt: str, mod
             target_tokens = fsm.get_target_tokens_for_current_state()
             tokens_ids.extend(target_tokens)
             response_tokens_ids.extend(target_tokens)
-            current_text += model.decode(target_tokens)
+            current_text += llm[0].decode(target_tokens)
             fsm.progress = len(target_tokens) - 1 if len(target_tokens) - 1 > 0 else 0
             fsm.update(target_tokens[-1])
             if fsm.state == JSONState.STOP:
@@ -239,7 +195,7 @@ def generate_response(functions_def: FunctionsDefinition, input_prompt: str, mod
             allowed_tokens = fsm.get_allowed_tokens()
             if not allowed_tokens or fsm.state == JSONState.END:
                 break
-            new_token_id = next_token_selection(model,
+            new_token_id = next_token_selection(llm[0],
                                                 tokens_ids,
                                                 allowed_tokens)
 
@@ -247,13 +203,13 @@ def generate_response(functions_def: FunctionsDefinition, input_prompt: str, mod
             if keep_token:
                 tokens_ids.append(new_token_id)
                 response_tokens_ids.append(new_token_id)
-                current_text += model.decode([new_token_id])
+                current_text += llm[0].decode([new_token_id])
                 if fsm.param_repeat_pattern:
-                    response_tokens_ids = utils.remove_repeating_pattern(model,
+                    response_tokens_ids = utils.remove_repeating_pattern(llm[0],
                                                                          response_tokens_ids,
                                                                          fsm.param_repeat_pattern)
 
-    return model.decode(response_tokens_ids)
+    return llm[0].decode(response_tokens_ids)
 
 
 def run_cli(functions_definition_path: str, input_path: str | None = None, output_path: str | None = None) -> list[dict[str, str]]:
@@ -279,11 +235,11 @@ def run_cli(functions_definition_path: str, input_path: str | None = None, outpu
         print(f"Error loading input prompts: {exc}", file=__import__("sys").stderr)
         raise
     
-    model = load_model()
+    llm = load_model()
 
     results: list[dict[str, str]] = []
     for prompt in prompts:
-        response = generate_response(functions_def, prompt, model=model)
+        response = generate_response(functions_def, prompt, llm=llm)
         try:
             response_dict = json.loads(response)
         except json.JSONDecodeError as exc:
