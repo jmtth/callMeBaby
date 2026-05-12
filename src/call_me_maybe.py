@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import platform
 import argparse
 import json
 from pathlib import Path
@@ -103,7 +103,7 @@ def load_model(cache_dir: str = "./.hf_cache") -> tuple[Small_LLM_Model,
     Returns:
         Tuple of (model, token_to_id mapping).
     """
-    system = __import__("platform").system().lower()
+    system = platform.system().lower()
     if system == 'linux':
         device = "cpu"
     else:
