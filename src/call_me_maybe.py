@@ -48,18 +48,19 @@ def build_token_to_id(vocab: dict) -> dict[str, int]:
         dict[str, int]: A consistent mapping of token strings
         to their corresponding IDs.
     """
-    # Shape A: {"!": 0, "the": 1, ...}
+    if not vocab:
+        raise ValueError("Vocabulary is empty, cannot build token_to_id")
+    # Shape A: {"0": "!", "1": "the", ...}
+    if all(isinstance(k, str) and k.isdecimal() and isinstance(v, str)
+           for k, v in vocab.items()):
+        return {v: int(k) for k, v in vocab.items()}
+
+    # Shape B: {"!": 0, "the": 1, ...}
     if all(isinstance(k, str) and isinstance(v, (int, str))
            for k, v in vocab.items()):
-        try:
-            return {k: int(v) for k, v in vocab.items()}
-        except (TypeError, ValueError):
-            pass
-    # Shape B: {"0": "!", "1": "the", ...}
-    try:
-        return {v: int(k) for k, v in vocab.items()}
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Unsupported vocab format for conversion") from exc
+        return {k: int(v) for k, v in vocab.items()}
+
+    raise ValueError("Unsupported vocab format for conversion")
 
 
 def next_token_selection(model,

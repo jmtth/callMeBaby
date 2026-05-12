@@ -31,6 +31,12 @@ follow_imports = "skip"
 module = "llm_sdk.*"
 follow_imports = "skip"
 
+[tool.coverage.run]
+source = ["src"]
+
+[tool.coverage.report]
+omit = ["tests/*"]
+
 [dependency-groups]
 dev = [
     "flake8>=7.3.0",
