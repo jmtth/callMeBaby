@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from src.call_me_maybe import _load_prompts
+from src.call_me_maybe import load_prompts
 
 
 def test_load_prompts_missing_file():
     """Test that missing file raises ValueError with path."""
     with pytest.raises(ValueError,
                        match="Input file not found.*nonexistent.json"):
-        _load_prompts("nonexistent.json")
+        load_prompts("nonexistent.json")
 
 
 def test_load_prompts_empty_file():
@@ -23,7 +23,7 @@ def test_load_prompts_empty_file():
         temp_path = f.name
     try:
         with pytest.raises(ValueError, match="Input file is empty"):
-            _load_prompts(temp_path)
+            load_prompts(temp_path)
     finally:
         Path(temp_path).unlink()
 
@@ -37,7 +37,7 @@ def test_load_prompts_invalid_json():
         temp_path = f.name
     try:
         with pytest.raises(ValueError, match="Invalid JSON"):
-            _load_prompts(temp_path)
+            load_prompts(temp_path)
     finally:
         Path(temp_path).unlink()
 
@@ -50,7 +50,7 @@ def test_load_prompts_valid_string():
         json.dump("test prompt", f)
         temp_path = f.name
     try:
-        prompts = _load_prompts(temp_path)
+        prompts = load_prompts(temp_path)
         assert prompts == ["test prompt"]
     finally:
         Path(temp_path).unlink()
@@ -64,7 +64,7 @@ def test_load_prompts_valid_dict_with_prompt():
         json.dump({"prompt": "test prompt"}, f)
         temp_path = f.name
     try:
-        prompts = _load_prompts(temp_path)
+        prompts = load_prompts(temp_path)
         assert prompts == ["test prompt"]
     finally:
         Path(temp_path).unlink()
@@ -78,7 +78,7 @@ def test_load_prompts_valid_dict_with_prompts():
         json.dump({"prompts": ["p1", "p2"]}, f)
         temp_path = f.name
     try:
-        prompts = _load_prompts(temp_path)
+        prompts = load_prompts(temp_path)
         assert prompts == ["p1", "p2"]
     finally:
         Path(temp_path).unlink()
@@ -94,7 +94,7 @@ def test_load_prompts_dict_missing_keys():
     try:
         with pytest.raises(ValueError,
                            match="must contain 'prompt' or 'prompts' key"):
-            _load_prompts(temp_path)
+            load_prompts(temp_path)
     finally:
         Path(temp_path).unlink()
 
@@ -107,7 +107,7 @@ def test_load_prompts_valid_list():
         json.dump(["p1", "p2", "p3"], f)
         temp_path = f.name
     try:
-        prompts = _load_prompts(temp_path)
+        prompts = load_prompts(temp_path)
         assert prompts == ["p1", "p2", "p3"]
     finally:
         Path(temp_path).unlink()
@@ -121,7 +121,7 @@ def test_load_prompts_list_with_dicts():
         json.dump([{"prompt": "p1"}, {"prompt": "p2"}], f)
         temp_path = f.name
     try:
-        prompts = _load_prompts(temp_path)
+        prompts = load_prompts(temp_path)
         assert prompts == ["p1", "p2"]
     finally:
         Path(temp_path).unlink()
@@ -137,7 +137,7 @@ def test_load_prompts_list_invalid_item():
     try:
         with pytest.raises(ValueError,
                            match="List items must be strings or dicts"):
-            _load_prompts(temp_path)
+            load_prompts(temp_path)
     finally:
         Path(temp_path).unlink()
 
@@ -152,7 +152,7 @@ def test_load_prompts_invalid_root_type():
     try:
         with pytest.raises(ValueError,
                            match="JSON must be string, dict, or list"):
-            _load_prompts(temp_path)
+            load_prompts(temp_path)
     finally:
         Path(temp_path).unlink()
 
