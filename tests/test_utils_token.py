@@ -2,6 +2,7 @@ from src import utils
 
 
 def test_is_number_terminator_token():
+    """Test the is_number_terminator_token function with various inputs."""
     assert utils.is_number_terminator_token(" ") is True
     assert utils.is_number_terminator_token("  ") is True
     assert utils.is_number_terminator_token(",") is True
@@ -11,7 +12,11 @@ def test_is_number_terminator_token():
     assert utils.is_number_terminator_token(".") is False
     assert utils.is_number_terminator_token("a") is False
 
+
 def test_get_number_token_ids():
+    """Test the get_number_token_ids function with
+    a sample token_to_id mapping.
+    """
     token_to_id = {
         "1": 0,
         "2": 1,

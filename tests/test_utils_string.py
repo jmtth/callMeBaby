@@ -19,6 +19,7 @@ class FakeModel(Small_LLM_Model):
 
 
 def test_get_repeating_pattern():
+    """Test the get_repeating_pattern function with various inputs."""
     assert utils.get_repeating_pattern(
         "catcatcat", min_len=3, max_repeats=3) == "cat"
     assert utils.get_repeating_pattern(
@@ -35,6 +36,7 @@ def test_get_repeating_pattern():
 
 
 def test_remove_repeating_pattern():
+    """Test the remove_repeating_pattern function with various inputs."""
     model = FakeModel()
     response = [ord(c) for c in "catcatcat"]
     pattern = "cat"
@@ -58,6 +60,7 @@ def test_remove_repeating_pattern():
 
 
 def test_remove_repeating_pattern_empty_pattern():
+    """Test the remove_repeating_pattern function with an empty pattern."""
     model = FakeModel()
     response = [ord(c) for c in "catcat"]
     new_response = utils.remove_repeating_pattern(model, response, "")
@@ -65,6 +68,7 @@ def test_remove_repeating_pattern_empty_pattern():
 
 
 def test_remove_repeating_pattern_tensor():
+    """Test the remove_repeating_pattern function with a tensor response."""
     from unittest.mock import MagicMock
     mock_model = MagicMock()
     tensor_mock = MagicMock()

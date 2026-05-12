@@ -38,6 +38,7 @@ class FakeModel:
 
 
 def test_extract_decimal_counts():
+    """Test prompt_decimal_count method with a simple prompt"""
     model = FakeModel()
     funcs = DummyFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -51,6 +52,9 @@ def test_extract_decimal_counts():
 
 
 def test_prompt_target_escapes_quotes_for_json_string():
+    """Test that the prompt target correctly escapes quotes
+    for JSON string values.
+    """
     model = FakeModel()
     funcs = DummyFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -65,6 +69,9 @@ def test_prompt_target_escapes_quotes_for_json_string():
 
 
 def test_allowed_tokens_for_string_value_uses_actual_token_ids():
+    """Test that the allowed tokens for a string value use
+    the actual token IDs.
+    """
     model = FakeModel()
     funcs = StringParamFunctionsDef()
     token_to_id = {"x": 10, '"': 42, "y": 99}
@@ -86,7 +93,10 @@ def test_allowed_tokens_for_string_value_uses_actual_token_ids():
     assert allowed_tokens == {10, 42, 99}
 
 
-def test_number_value_allows_digits_and_terminators_after_precision_is_met():
+def test_number_value_allows_only_terminators_after_precision_is_met():
+    """Test that for a number parameter, once the precision of
+    the prompt value is met,the allowed tokens include only terminators.
+    """
     model = FakeModel()
     funcs = NumberParamFunctionsDef()
     token_to_id = {"1": 11, "2": 22, ",": 33, " ": 44, "}": 55, ".": 66}

@@ -5,6 +5,9 @@ import pytest
 
 
 def test_main_runs_without_error():
+    """Test that the main function runs
+    without error with default arguments.
+    """
     from src import call_me_maybe
 
     called = {}
@@ -26,6 +29,9 @@ def test_main_runs_without_error():
 
 
 def test_main_with_nonexistent_functions_definition():
+    """Test that the main function raises ValueError
+    when given a non-existent functions definition file.
+    """
     with pytest.raises(ValueError) as exc:
         main(["--functions_definition",
               "./tests/data/nonexistent_functions_definition.json"])
@@ -33,6 +39,9 @@ def test_main_with_nonexistent_functions_definition():
 
 
 def test_wrong_functions_definition():
+    """Test that creating a FunctionsDefinition from a wrong JSON file
+    raises a ValueError.
+    """
     with pytest.raises(ValueError) as exc:
         FunctionsDefinition.from_json(
             "tests/data/wrong_functions_definition.json")
@@ -40,6 +49,9 @@ def test_wrong_functions_definition():
 
 
 def test_empty_functions_definition():
+    """Test that creating a FunctionsDefinition from an empty JSON file
+    raises a ValueError.
+    """
     with pytest.raises(ValueError) as exc:
         FunctionsDefinition.from_json(
             "tests/data/empty_functions_definition.json")
@@ -47,6 +59,9 @@ def test_empty_functions_definition():
 
 
 def test_nonexistent_functions_definition():
+    """Test that creating a FunctionsDefinition from a non-existent file
+    raises a ValueError.
+    """
     with pytest.raises(ValueError) as exc:
         FunctionsDefinition.from_json(
             "tests/data/nonexistent_functions_definition.json")
@@ -54,6 +69,9 @@ def test_nonexistent_functions_definition():
 
 
 def test_valid_functions_definition():
+    """Test that creating a FunctionsDefinition from a valid JSON file
+    succeeds.
+    """
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     assert len(functions_def.functions) == 5
@@ -66,6 +84,7 @@ def test_valid_functions_definition():
 
 
 def test_get_function_by_name():
+    """Test that get_function_by_name returns the correct function."""
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     func = functions_def.get_function_by_name("fn_greet")
@@ -76,6 +95,9 @@ def test_get_function_by_name():
 
 
 def test_get_function_by_name_not_found():
+    """Test that get_function_by_name raises ValueError
+    when the function is not found.
+    """
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     with pytest.raises(ValueError) as exc:
@@ -85,6 +107,9 @@ def test_get_function_by_name_not_found():
 
 
 def test_get_function_description_by_name():
+    """Test that get_function_description_by_name
+    returns the correct description.
+    """
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     description = functions_def.get_function_description_by_name(
@@ -93,6 +118,9 @@ def test_get_function_description_by_name():
 
 
 def test_get_function_parameters_by_name():
+    """Test that get_function_parameters_by_name
+    returns the correct parameters.
+    """
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     params = functions_def.get_function_parameters_by_name("fn_add_numbers")
@@ -101,6 +129,7 @@ def test_get_function_parameters_by_name():
 
 
 def test_get_nb_parameters():
+    """Test that get_nb_parameters returns the correct number of parameters."""
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     nb_params = functions_def.get_nb_parameters(
@@ -109,6 +138,9 @@ def test_get_nb_parameters():
 
 
 def test_get_nb_parameters_nonexistent_function():
+    """Test that get_nb_parameters raises ValueError
+    when the function is not found.
+    """
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     with pytest.raises(ValueError) as exc:
@@ -118,6 +150,7 @@ def test_get_nb_parameters_nonexistent_function():
 
 
 def test_get_functions_prompt():
+    """Test that get_functions_prompt returns the correct prompt."""
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     prompt = functions_def.get_functions_prompt()
