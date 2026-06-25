@@ -25,7 +25,7 @@ test:
 
 coverage:
 	@echo "Running tests with coverage for CallMeBaby..."
-	uv run pytest --cov
+	uv run pytest --cov --cov-report=term-missing
 
 debug:
 	@echo "Debugging CallMeBaby..."
