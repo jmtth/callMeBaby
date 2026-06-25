@@ -1,5 +1,16 @@
 NAME : CallMeBaby
 
+help:
+	@echo "Makefile for $(NAME)"
+	@echo "Usage: make [target]"
+	@echo "Targets:"
+	@echo "  install      Install the project"
+	@echo "  run          Run the project"
+	@echo "  debug        Debug the project"
+	@echo "  clean        Clean up temporary files"
+	@echo "  lint         Lint the project"
+	@echo "  lint-strict  Strict linting of the project"
+
 install:
 	@echo "Installing CallMeBaby..."
 	uv sync
@@ -7,6 +18,14 @@ install:
 run:
 	@echo "Running CallMeBaby..."
 	uv run python main.py
+
+test:
+	@echo "Running tests for CallMeBaby..."
+	uv run pytest
+
+coverage:
+	@echo "Running tests with coverage for CallMeBaby..."
+	uv run pytest --cov
 
 debug:
 	@echo "Debugging CallMeBaby..."
