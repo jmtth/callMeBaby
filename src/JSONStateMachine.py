@@ -1,11 +1,18 @@
 import json
+from typing import cast
 
 from src.models import JSONState
 from src import utils
+from llm_sdk.llm_sdk import Small_LLM_Model
+from src.functions_manager import FunctionsDefinition, Parameter
 
 
 class JSONStateMachine:
-    def __init__(self, model, functions_def, token_to_id, prompt=""):
+    def __init__(self,
+                 model: Small_LLM_Model,
+                 functions_def: FunctionsDefinition,
+                 token_to_id: dict[str, int],
+                 prompt: str = ""):
         """State machine to track the generation of a JSON function call.
 
         Attributes:
@@ -29,8 +36,9 @@ class JSONStateMachine:
         def _norm_encode(s: str) -> list[int]:
             enc0 = model.encode(s)[0]
             if hasattr(enc0, "tolist"):
-                return enc0.tolist()
-            return list(enc0)
+                return [int(token_id) for token_id in cast(list[int],
+                                                           enc0.tolist())]
+            return [int(token_id) for token_id in enc0]
 
         # Escape user prompt for insertion inside a JSON string value.
         escaped_prompt = json.dumps(prompt, ensure_ascii=False)[1:-1]
@@ -84,13 +92,13 @@ class JSONStateMachine:
             return None
         return params
 
-    def _get_current_param_type(self):
+    def _get_current_param_type(self) -> str | None:
         params = self._get_current_function_params()
         if params is None:
             return None
 
         idx = self._get_adjusted_param_index()
-        values = [*params.values()]
+        values: list[Parameter] = [*params.values()]
         if idx < 0 or idx >= len(values):
             return None
 
@@ -102,7 +110,7 @@ class JSONStateMachine:
             return None
 
         idx = self._get_adjusted_param_index()
-        values = [*params.keys()]
+        values: list[str] = [*params.keys()]
         if idx < 0 or idx >= len(values):
             return None
         return values[idx]
@@ -157,7 +165,7 @@ class JSONStateMachine:
         return self._get_all_token_ids()
 
     def _allowed_tokens_for_parameter_name(self) -> set[int]:
-        allowed_tokens = set()
+        allowed_tokens: set[int] = set()
         params = self._get_current_function_params()
         if params is not None:
             param_names = [*params.keys()]
@@ -173,7 +181,7 @@ class JSONStateMachine:
         return allowed_tokens
 
     def _allowed_tokens_for_parameter_value(self) -> set[int]:
-        allowed_tokens = set()
+        allowed_tokens: set[int] = set()
         param_type = self._get_current_param_type()
 
         if param_type == "string":
@@ -194,7 +202,7 @@ class JSONStateMachine:
         return allowed_tokens
 
     def _allowed_tokens_for_param_string(self) -> set[int]:
-        allowed_tokens = set()
+        allowed_tokens: set[int] = set()
         MAX_STRING_LENGTH = 80
 
         quote_id = self.token_to_id.get('"')
@@ -290,7 +298,7 @@ class JSONStateMachine:
         return digit_tokens
 
     def _allowed_tokens_for_function_name(self) -> set[int]:
-        allowed_tokens = set()
+        allowed_tokens: set[int] = set()
         still_possible = [
             s for s in self.functions_names
             if s.startswith(self.current_text)
@@ -306,7 +314,7 @@ class JSONStateMachine:
         return allowed_tokens
 
     def _allowed_tokens_for_replacement(self) -> set[int]:
-        allowed_tokens = set()
+        allowed_tokens: set[int] = set()
         still_possible = [
             s for s in self.prompt_list
             if s.startswith(self.current_text[1:])  # Skip the opening quote
@@ -428,7 +436,7 @@ class JSONStateMachine:
 
         return True
 
-    def _update_state(self):
+    def _update_state(self) -> None:
         if self.state == JSONState.START:
             self.state = JSONState.PROMPT_KEY
         elif self.state == JSONState.PROMPT_KEY:
