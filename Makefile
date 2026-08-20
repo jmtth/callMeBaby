@@ -17,7 +17,8 @@ install:
 
 run:
 	@echo "Running CallMeBaby..."
-	uv run python main.py
+	uv run python -m src --functions_definition data/input/functions_definition.json --input data/input/function_calling_tests.json
+# 	uv run python main.py
 
 test:
 	@echo "Running tests for CallMeBaby..."
@@ -45,4 +46,12 @@ lint-strict:
 	uv run flake8 ./src
 	uv run mypy ./src --strict
 
-.PHONY: install run debug clean lint lint-strict
+local:
+	export HF_HUB_OFFLINE=1
+	export TRANSFORMERS_OFFLINE=1
+
+unset-local:
+	unset HF_HUB_OFFLINE
+	unset TRANSFORMERS_OFFLINE
+
+.PHONY: install run debug clean lint lint-strict local unset-local
