@@ -1,7 +1,8 @@
 # ABOUTME: LLM SDK for local model inference using Hugging Face transformers.
 # ABOUTME: Provides Small_LLM_Model class for loading and running causal language models.
 
-from typing import Optional
+import time
+from typing import Tuple
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizer, PreTrainedModel, logging
@@ -10,7 +11,6 @@ import os
 
 
 logging.set_verbosity_error()  # keep the console clean
-logging.disable_progress_bar()
 
 
 class Small_LLM_Model:
@@ -26,11 +26,6 @@ class Small_LLM_Model:
     dtype: torch.dtype | None, default=None
         Numerical precision. When using a GPU or MPS we default to ``float16`` to keep memory
         usage reasonable; on CPU we keep ``float32`` for maximum compatibility.
-    cache_dir: str | None, default=None
-        Optional directory used to store and reuse downloaded HF artifacts
-        (weights, tokenizer and JSON metadata).
-    local_files_only: bool, default=False
-        If ``True``, never reaches the network and only loads artifacts from local cache.
     """
 
     def __init__(
@@ -40,12 +35,8 @@ class Small_LLM_Model:
         device: str | None = None,
         dtype: torch.dtype | None = None,
         trust_remote_code: bool = True,
-        cache_dir: Optional[str] = None,
-        local_files_only: bool = False,
     ) -> None:
         self._model_name = model_name
-        self._cache_dir = cache_dir or os.getenv("LLM_SDK_CACHE_DIR")
-        self._local_files_only = local_files_only
 
         # Auto-select device with priority: mps > cuda > cpu
         if device is None:
@@ -63,10 +54,7 @@ class Small_LLM_Model:
 
         # --- load tokenizer & model -------------------------------------------------
         self._tokenizer: PreTrainedTokenizer = AutoTokenizer.from_pretrained(
-            model_name,
-            trust_remote_code=trust_remote_code,
-            cache_dir=self._cache_dir,
-            local_files_only=self._local_files_only,
+            model_name, trust_remote_code=trust_remote_code
         )
         if self._tokenizer.pad_token_id is None:
             # ensure we have a pad token to keep batch helpers happy
@@ -77,8 +65,6 @@ class Small_LLM_Model:
             torch_dtype=self._dtype,
             device_map="auto" if self._device == "cuda" else None,
             trust_remote_code=trust_remote_code,
-            cache_dir=self._cache_dir,
-            local_files_only=self._local_files_only,
         )
         self._model.to(self._device)
         self._model.eval()
@@ -117,9 +103,7 @@ class Small_LLM_Model:
         vocab_file_name = self._tokenizer.vocab_files_names.get('vocab_file', "vocab.json")
         vocab_path = hf_hub_download(
             repo_id=self._model_name,
-            filename=vocab_file_name,
-            cache_dir=self._cache_dir,
-            local_files_only=self._local_files_only,
+            filename=vocab_file_name
         )
         return vocab_path
 
@@ -128,9 +112,7 @@ class Small_LLM_Model:
         merges_file_name = self._tokenizer.vocab_files_names.get('merges_file', "merges.txt")
         merges_path = hf_hub_download(
             repo_id=self._model_name,
-            filename=merges_file_name,
-            cache_dir=self._cache_dir,
-            local_files_only=self._local_files_only,
+            filename=merges_file_name
         )
         return merges_path
 
@@ -139,8 +121,6 @@ class Small_LLM_Model:
         tokenizer_file_name = self._tokenizer.vocab_files_names.get('tokenizer_file', "tokenizer.json")
         tokenizer_path = hf_hub_download(
             repo_id=self._model_name,
-            filename=tokenizer_file_name,
-            cache_dir=self._cache_dir,
-            local_files_only=self._local_files_only,
+            filename=tokenizer_file_name
         )
         return tokenizer_path
