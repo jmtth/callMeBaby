@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 
 import numpy as np
-from llm_sdk.llm_sdk import Small_LLM_Model, logging
+from llm_sdk import Small_LLM_Model, logging
 
 from src.JSONStateMachine import JSONStateMachine
 from src.functions_manager import FunctionsDefinition

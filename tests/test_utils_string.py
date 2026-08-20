@@ -1,5 +1,5 @@
 from src import utils
-from llm_sdk.llm_sdk import Small_LLM_Model
+from llm_sdk import Small_LLM_Model
 from torch import Tensor
 from typing import cast
 
