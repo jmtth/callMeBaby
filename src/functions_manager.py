@@ -10,6 +10,7 @@ TYPE_MAPPING = {
     "boolean": bool,
 }
 
+
 class Parameter(BaseModel):
     """Class representing a function parameter."""
     type: str = Field(..., description="Type of the parameter")
@@ -105,7 +106,8 @@ class FunctionsDefinition:
             param_name: (TYPE_MAPPING[param.type], ...)
             for param_name, param in func.parameters.items()
         }
-        ParamsModel: type[BaseModel] = create_model(f"{func.name}_params", **params_fields)
+        ParamsModel: type[BaseModel] = create_model(f"{func.name}_params",
+                                                    **params_fields)
         OutputSchema: type[BaseModel] = create_model(
             f"{func.name}_output",
             prompt=(str, ...),
@@ -114,4 +116,3 @@ class FunctionsDefinition:
             __base__=BaseModel,
         )
         return OutputSchema
-

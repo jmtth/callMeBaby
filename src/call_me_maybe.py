@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from pydantic import ValidationError
 
 
 import numpy as np
-from llm_sdk import Small_LLM_Model
+from llm_sdk.llm_sdk import Small_LLM_Model, logging
 
 from src.JSONStateMachine import JSONStateMachine
 from src.functions_manager import FunctionsDefinition
 from src.models import JSONState
 from src import utils
+import timeit
 
 
 def build_prompt(functions_def: FunctionsDefinition, prompt: str) -> str:
@@ -90,12 +92,8 @@ def next_token_selection(model,
     return int(np.argmax(mask))
 
 
-def load_model(cache_dir: str = "./.hf_cache") -> tuple[Small_LLM_Model,
-                                                        dict[str, int]]:
+def load_model() -> tuple[Small_LLM_Model, dict[str, int]]:
     """Load the small LLM model.
-
-    First, try to load with local_files_only=True to avoid downloads.
-    If the model files are not found locally, local_files_only=False.
 
     Args:
         cache_dir: Directory to use for caching model files.
@@ -103,19 +101,18 @@ def load_model(cache_dir: str = "./.hf_cache") -> tuple[Small_LLM_Model,
     Returns:
         Tuple of (model, token_to_id mapping).
     """
+    logging.disable_progress_bar()
     system = __import__("platform").system().lower()
     if system == 'linux':
         device = "cpu"
     else:
         device = "mps"
     try:
-        model = Small_LLM_Model(device=device,
-                                cache_dir=cache_dir,
-                                local_files_only=True)
-    except Exception:
-        model = Small_LLM_Model(device=device,
-                                cache_dir=cache_dir,
-                                local_files_only=False)
+        model = Small_LLM_Model(device=device)
+    except Exception as exc:
+        print(f"Error loading model: {exc}.")
+        sys.exit(1)
+
     vocab_path = model.get_path_to_vocab_file()
     with open(vocab_path, encoding="utf-8") as f:
         vocab = json.load(f)
@@ -265,9 +262,12 @@ def run_cli(functions_definition_path: str,
               file=__import__("sys").stderr)
         raise
 
+    print("Loading model...")
     llm = load_model()
+    print("Model loaded.")
 
     results: list[dict[str, str]] = []
+    start_time = timeit.default_timer()
     for prompt in prompts:
         response = generate_response(functions_def, prompt, llm=llm)
         try:
@@ -286,6 +286,13 @@ def run_cli(functions_definition_path: str,
         except ValidationError as e:
             print(e)
         results.append(response_dict)
+
+    end_time = timeit.default_timer()
+    minutes = (end_time - start_time) / 60
+    seconds = (end_time - start_time) % 60
+    message = f"Total execution time: {minutes:.0f}"
+    message += f" minutes and {seconds:.0f} seconds"
+    print(message)
 
     if output_path is not None:
         Path(output_path).write_text(json.dumps(results,
