@@ -1,4 +1,5 @@
 import src.call_me_maybe as cmm
+from src.grounding import infer_string_parameters
 from src.models import JSONState
 from unittest.mock import MagicMock, patch, mock_open
 import pytest
@@ -371,3 +372,27 @@ def test_generate_response_loads_model_if_none(mock_fsm_class,
     cmm.generate_response(fake_functions_def, "What is 1+1?")
 
     mock_load_model.assert_called_once()
+
+
+def test_infer_greet_name_from_prompt():
+    assert infer_string_parameters("Greet shrek") == {"name": "shrek"}
+
+
+def test_infer_literal_substitution_parameters():
+    prompt = "Substitute the word 'cat' with 'dog' in 'The cat sat'"
+
+    assert infer_string_parameters(prompt) == {
+        "source_string": "The cat sat",
+        "regex": "cat",
+        "replacement": "dog",
+    }
+
+
+def test_infer_number_regex_substitution_parameters():
+    prompt = 'Replace all numbers in "Hello 34 and 233" with NUMBERS'
+
+    assert infer_string_parameters(prompt) == {
+        "source_string": "Hello 34 and 233",
+        "regex": "[0-9]+",
+        "replacement": "NUMBERS",
+    }

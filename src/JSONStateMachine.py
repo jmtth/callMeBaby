@@ -4,7 +4,7 @@ from typing import cast
 from src.models import JSONState
 from src import utils
 from src.functions_manager import FunctionsDefinition, Parameter
-from src.grounding import validate_prompt_capacity
+from src.grounding import infer_string_parameters, validate_prompt_capacity
 from src.token_vocabulary import TokenModel, TokenVocabulary
 
 
@@ -37,6 +37,7 @@ class JSONStateMachine:
         self.functions_names = functions_def.list_functions_name()
         self.functions = functions_def
         self.prompt = prompt
+        self.grounded_string_parameters = infer_string_parameters(prompt)
         self.token_to_id = token_to_id
         self.vocabulary = vocabulary or TokenVocabulary(model, token_to_id)
 
@@ -232,7 +233,13 @@ class JSONStateMachine:
         if utils.get_repeating_pattern(self.current_text):
             return quote_ids
 
-        if self._get_current_param_name() == 'replacement':
+        param_name = self._get_current_param_name()
+        grounded_value = self.grounded_string_parameters.get(param_name or "")
+        if grounded_value is not None:
+            allowed_tokens = self._allowed_tokens_for_grounded_string(
+                grounded_value
+            )
+        elif param_name == 'replacement':
             allowed_tokens = self._allowed_tokens_for_replacement()
         else:
             allowed_tokens = self.vocabulary.json_string_content_ids()
@@ -243,7 +250,16 @@ class JSONStateMachine:
             if self._is_safe_string_continuation(token_id)
         }
         safe_tokens.update(quote_ids)
+        if grounded_value is not None:
+            generated = self.current_text[1:]
+            if generated != grounded_value:
+                safe_tokens.difference_update(quote_ids)
         return safe_tokens
+
+    def _allowed_tokens_for_grounded_string(self, value: str) -> set[int]:
+        """Allow only token fragments that continue one extracted value."""
+        generated = self.current_text[1:]
+        return self._get_allowed_tokens_for_string(value, generated)
 
     def _is_safe_string_continuation(self, token_id: int) -> bool:
         candidate = self.current_text + self.vocabulary.text(token_id)

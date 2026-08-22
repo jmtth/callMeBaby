@@ -13,6 +13,69 @@ from src.functions_manager import FunctionsDefinition
 BOOLEAN_PATTERN = re.compile(r"\b(true|false)\b", re.IGNORECASE)
 
 
+def infer_string_parameters(prompt: str) -> dict[str, str]:
+    """Extract unambiguous string arguments from common request phrasing.
+
+    The returned keys are semantic parameter names.  An empty mapping means
+    that the prompt was not recognized and constrained generation should fall
+    back to the language model.
+    """
+    substitute = re.fullmatch(
+        r"\s*substitute(?:\s+the\s+word)?\s+(['\"])(.*?)\1\s+with\s+"
+        r"(['\"])(.*?)\3\s+in\s+(['\"])(.*?)\5\s*[.!?]?\s*",
+        prompt,
+        flags=re.IGNORECASE,
+    )
+    if substitute:
+        searched, replacement, source = (
+            substitute.group(2),
+            substitute.group(4),
+            substitute.group(6),
+        )
+        return {
+            "source_string": source,
+            "regex": re.escape(searched),
+            "replacement": replacement,
+        }
+
+    replace = re.fullmatch(
+        r"\s*replace\s+all\s+(numbers|vowels)\s+in\s+"
+        r"(['\"])(.*?)\2\s+with\s+(.+?)\s*[.!?]?\s*",
+        prompt,
+        flags=re.IGNORECASE,
+    )
+    if replace:
+        kind, source, replacement = (
+            replace.group(1).lower(),
+            replace.group(3),
+            replace.group(4).strip(" \t'\""),
+        )
+        regex = "[0-9]+" if kind == "numbers" else "[aeiouAEIOU]"
+        return {
+            "source_string": source,
+            "regex": regex,
+            "replacement": replacement,
+        }
+
+    greet = re.fullmatch(
+        r"\s*greet\s+(['\"]?)(.+?)\1\s*[.!?]?\s*",
+        prompt,
+        flags=re.IGNORECASE,
+    )
+    if greet:
+        return {"name": greet.group(2)}
+
+    reverse = re.fullmatch(
+        r"\s*reverse(?:\s+the)?\s+string\s+(['\"])(.*?)\1\s*[.!?]?\s*",
+        prompt,
+        flags=re.IGNORECASE,
+    )
+    if reverse:
+        return {"s": reverse.group(2)}
+
+    return {}
+
+
 @dataclass(frozen=True)
 class PromptValues:
     """Typed literals explicitly available in one user prompt."""
