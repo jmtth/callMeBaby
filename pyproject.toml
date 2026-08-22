@@ -21,6 +21,7 @@ testpaths = ["tests"]
 
 [tool.mypy]
 mypy_path = "."
+exclude = "^(tests|vendor_llm_sdk)/"
 #ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

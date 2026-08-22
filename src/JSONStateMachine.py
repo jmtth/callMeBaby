@@ -28,6 +28,9 @@ class JSONStateMachine:
         self.current_text = ""
         self.current_function_name = ""
 
+        # Keep every function from functions_definition.json available.
+        # LLM logits choose the function; the FSM only constrains the choice
+        # to names that exist in the input schema.
         self.functions_names = functions_def.list_functions_name()
         self.functions = functions_def
         self.token_to_id = token_to_id
@@ -49,6 +52,7 @@ class JSONStateMachine:
             JSONState.PROMPT_KEY: _norm_encode('"prompt": "'),
             JSONState.NAME_KEY: _norm_encode('", "name": "'),
             JSONState.PARAMS_KEY: _norm_encode('", "parameters": {"'),
+            JSONState.EMPTY_PARAMS: _norm_encode('", "parameters": {}}'),
             JSONState.PROMPT_VAL: _norm_encode(escaped_prompt),
             JSONState.PARAM_COLON: _norm_encode('": '),
             JSONState.PARAM_COMMA: _norm_encode(', "'),
@@ -294,7 +298,10 @@ class JSONStateMachine:
         terminator_tokens = utils.get_number_terminator_token_ids(
             self.token_to_id)
         if terminator_tokens:
-            return digit_tokens | terminator_tokens
+            # Once a complete value has reached the expected precision, stop
+            # extending it. Otherwise greedy decoding can emit digits until the
+            # global response-token limit is reached, leaving invalid JSON.
+            return terminator_tokens
         return digit_tokens
 
     def _allowed_tokens_for_function_name(self) -> set[int]:
@@ -395,7 +402,10 @@ class JSONStateMachine:
                 self.total_params = self.functions.get_nb_parameters(
                     self.current_function_name
                 )
-                self._update_state()
+                if self.total_params == 0:
+                    self.state = JSONState.EMPTY_PARAMS
+                else:
+                    self._update_state()
                 self.current_text = ""
 
         elif self.state == JSONState.PARAMS_KEY:
@@ -445,6 +455,8 @@ class JSONStateMachine:
             self.state = JSONState.NAME_KEY
         elif self.state == JSONState.NAME_KEY:
             self.state = JSONState.NAME_VAL
+        elif self.state == JSONState.EMPTY_PARAMS:
+            self.state = JSONState.STOP
         elif self.state == JSONState.NAME_VAL:
             self.state = JSONState.PARAMS_KEY
         elif self.state == JSONState.PARAMS_KEY:

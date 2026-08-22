@@ -28,6 +28,17 @@ class NumberParamFunctionsDef:
         return {"value": DummyParam("number")}
 
 
+class EmptyParamFunctionsDef:
+    def list_functions_name(self):
+        return ["fn_ping"]
+
+    def get_function_parameters_by_name(self, name: str):
+        return {}
+
+    def get_nb_parameters(self, name: str):
+        return 0
+
+
 class FakeModel:
     def encode(self, s: str):
         # return a list-like structure where [0] is a list of ints
@@ -110,3 +121,20 @@ def test_number_value_allows_only_terminators_after_precision_is_met():
     allowed_tokens = sm.get_allowed_tokens()
 
     assert allowed_tokens == {33, 44, 55}
+
+
+def test_empty_parameter_function_generates_complete_json_suffix():
+    model = FakeModel()
+    funcs = EmptyParamFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(model, funcs, token_to_id, prompt="nonsense")
+
+    sm.state = JSONState.NAME_VAL
+    for char in "fn_ping":
+        sm.update(ord(char))
+
+    assert sm.current_function_name == "fn_ping"
+    assert sm.state == JSONState.EMPTY_PARAMS
+    assert model.decode(sm.get_target_tokens_for_current_state()) == (
+        '\", "parameters": {}}'
+    )

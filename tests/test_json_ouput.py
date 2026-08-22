@@ -61,6 +61,20 @@ def test_good_json_f_str_output():
     assert validated.model_dump()["parameters"]["b"] == 3.0
 
 
+def test_output_rejects_extra_keys():
+    """Generated objects must contain no keys outside the output schema."""
+    functions_def = FunctionsDefinition.from_json(
+        "./tests/data/valid_functions_definition.json")
+    OutputModel = functions_def.get_output_function_model("fn_add_numbers")
+    output_with_extra_key = {
+        **good_f_str_json_output,
+        "error": "unexpected",
+    }
+
+    with pytest.raises(ValidationError):
+        OutputModel.model_validate(output_with_extra_key)
+
+
 def test_bad_json_str_f_output():
     """Test that validating a JSON output
     for a function with string parameters

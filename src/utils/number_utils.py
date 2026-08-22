@@ -1,4 +1,29 @@
 import re
+from decimal import Decimal, InvalidOperation
+
+
+NUMBER_PATTERN = re.compile(
+    r"(?<![\w.])-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
+    r"(?![\w.])"
+)
+
+
+def extract_numbers(string: str) -> list[Decimal]:
+    """Extract numeric literals without losing their decimal value.
+
+    Args:
+        string: Natural-language text that may contain numeric literals.
+
+    Returns:
+        Numeric literals in their order of appearance.
+    """
+    numbers: list[Decimal] = []
+    for match in NUMBER_PATTERN.finditer(string):
+        try:
+            numbers.append(Decimal(match.group(0)))
+        except InvalidOperation:
+            continue
+    return numbers
 
 
 def extract_decimal_counts(string: str) -> list[int]:
