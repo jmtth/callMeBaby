@@ -7,15 +7,14 @@ from pathlib import Path
 from pydantic import ValidationError
 
 
-import numpy as np
 from llm_sdk import Small_LLM_Model, logging
 
 from src.JSONStateMachine import JSONStateMachine
 from src.functions_manager import FunctionsDefinition
-from src.models import JSONState
-from src import utils
+from src.generator import generate_constrained_response, select_next_token
+from src.grounding import collect_prompt_values
+from src.token_vocabulary import TokenVocabulary
 import timeit
-from typing import cast
 
 
 def build_prompt(functions_def: FunctionsDefinition, prompt: str) -> str:
@@ -70,31 +69,7 @@ def build_token_to_id(vocab: dict) -> dict[str, int]:
     raise ValueError("Unsupported vocab format for conversion")
 
 
-def next_token_selection(model: Small_LLM_Model,
-                         current_ids: list[int],
-                         allowed_ids: set[int]
-                         ) -> int:
-    """Select the next token id with the best probability
-
-    Args:
-        model: llm_sdk
-        current_ids: Ids list of current prompt
-        allowed_ids: list of ids of allowed token
-
-    Returns:
-        int: the choosen token
-    """
-    logits = model.get_logits_from_input_ids(current_ids)
-    logits_np = np.array(logits)
-
-    if not allowed_ids:
-        raise ValueError("No allowed tokens available for selection")
-
-    mask = np.full_like(logits_np, float("-inf"))
-    indices = list(allowed_ids)
-    mask[indices] = logits_np[indices]
-
-    return int(np.argmax(mask))
+next_token_selection = select_next_token
 
 
 def load_model() -> tuple[Small_LLM_Model, dict[str, int]]:
@@ -202,13 +177,9 @@ def validate_grounded_parameters(functions_def: FunctionsDefinition,
         ValueError: If a number or boolean value is absent from the prompt.
     """
     schema = functions_def.get_function_parameters_by_name(function_name)
-    available_numbers = utils.extract_numbers(prompt)
-    prompt_words = prompt.lower().split()
-    available_booleans = [
-        value == "true"
-        for value in prompt_words
-        if value in {"true", "false"}
-    ]
+    available = collect_prompt_values(prompt)
+    available_numbers = list(available.numbers)
+    available_booleans = list(available.booleans)
 
     for parameter_name, parameter_schema in schema.items():
         value = parameters[parameter_name]
@@ -241,7 +212,8 @@ def generate_response(functions_def: FunctionsDefinition,
                           Small_LLM_Model,
                           dict[str, int]
                           ] | None = None,
-                      max_res_tokens: int = 512) -> str:
+                      max_res_tokens: int = 512,
+                      vocabulary: TokenVocabulary | None = None) -> str:
     """Generate a response based on the model,the functions definition,
     and the user prompt.
 
@@ -258,43 +230,17 @@ def generate_response(functions_def: FunctionsDefinition,
     prompt = build_prompt(functions_def, input_prompt)
     if llm is None:
         llm = load_model()
-    tokens_ids = llm[0].encode(prompt)[0].tolist()
-    response_tokens_ids: list[int] = []
-
-    fsm = JSONStateMachine(llm[0], functions_def, llm[1], input_prompt)
-
-    current_text = ""
-    for i in range(max_res_tokens):
-        if fsm.is_in_fixed_sequence():
-            target_tokens = fsm.get_target_tokens_for_current_state()
-            tokens_ids.extend(target_tokens)
-            response_tokens_ids.extend(target_tokens)
-            current_text += llm[0].decode(target_tokens)
-            fsm.progress = max(len(target_tokens) - 1, 0)
-            fsm.update(target_tokens[-1])
-            if fsm.state == JSONState.STOP:
-                break
-        else:
-            allowed_tokens = fsm.get_allowed_tokens()
-            if not allowed_tokens or fsm.state == JSONState.END:
-                break
-            if len(allowed_tokens) == 1:
-                new_token_id = next(iter(allowed_tokens))
-            else:
-                new_token_id = next_token_selection(llm[0],
-                                                    tokens_ids,
-                                                    allowed_tokens)
-            keep_token = fsm.update(new_token_id)
-            if keep_token:
-                tokens_ids.append(new_token_id)
-                response_tokens_ids.append(new_token_id)
-                current_text += llm[0].decode([new_token_id])
-                if fsm.param_repeat_pattern:
-                    response_tokens_ids = utils.remove_repeating_pattern(
-                        llm[0],
-                        response_tokens_ids,
-                        fsm.param_repeat_pattern)
-    return cast(str, llm[0].decode(response_tokens_ids))
+    return generate_constrained_response(
+        llm[0],
+        llm[1],
+        functions_def,
+        prompt,
+        input_prompt,
+        max_res_tokens,
+        vocabulary=vocabulary,
+        token_selector=next_token_selection,
+        fsm_factory=JSONStateMachine,
+    )
 
 
 def run_cli(functions_definition_path: str,
@@ -329,10 +275,16 @@ def run_cli(functions_definition_path: str,
     print("Loading model...")
     llm = load_model()
     print("Model loaded.")
+    vocabulary = TokenVocabulary(llm[0], llm[1])
     results: list[dict[str, str]] = []
     start_time = timeit.default_timer()
     for prompt in prompts:
-        response = generate_response(functions_def, prompt, llm=llm)
+        response = generate_response(
+            functions_def,
+            prompt,
+            llm=llm,
+            vocabulary=vocabulary,
+        )
         try:
             response_dict = json.loads(response)
         except json.JSONDecodeError as exc:
@@ -393,15 +345,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--input",
         dest="input_path",
-        # default="data/input/function_calling_tests.json",
-        default=None,
+        default="data/input/function_calling_tests.json",
+        # default=None,
         help="Path to the list of prompts JSON file.",
     )
     parser.add_argument(
         "--output",
         dest="output_path",
-        # default="data/output/function_calling_results.json",
-        default=None,
+        default="data/output/function_calling_results.json",
+        # default=None,
         help="Path where the generated responses should be written.",
     )
     args = parser.parse_args(argv)

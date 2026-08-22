@@ -1,8 +1,11 @@
 import src.call_me_maybe as cmm
-from src.call_me_maybe import JSONState
+from src.models import JSONState
 from unittest.mock import MagicMock, patch, mock_open
 import pytest
 import json
+
+from src.generator import GenerationBuffer, GenerationLimitError
+from src.functions_manager import FunctionSchema, Parameter
 
 
 def test_build_prompt_includes_functions():
@@ -88,6 +91,17 @@ def test_next_token_selection_no_allowed_tokens():
             fake_model, fake_current_ids, fake_allowed_ids)
 
 
+def test_generation_buffer_enforces_an_atomic_token_budget():
+    buffer = GenerationBuffer(prompt_ids=[1, 2], max_response_tokens=2)
+    buffer.append([3, 4])
+
+    with pytest.raises(GenerationLimitError, match="max_res_tokens=2"):
+        buffer.append(5)
+
+    assert buffer.response_ids == [3, 4]
+    assert buffer.context_ids == [1, 2, 3, 4]
+
+
 def test_grounded_numeric_parameters_accept_prompt_values():
     functions_def = cmm.FunctionsDefinition.from_json(
         "tests/data/valid_functions_definition.json"
@@ -113,6 +127,23 @@ def test_grounded_numeric_parameters_reject_invented_value():
             "fn_add_numbers",
             {"a": 34.0, "b": 3.0},
         )
+
+
+def test_grounded_boolean_detects_literal_before_punctuation():
+    functions_def = cmm.FunctionsDefinition([
+        FunctionSchema(
+            name="toggle",
+            description="Toggle a setting.",
+            parameters={"enabled": Parameter(type="boolean")},
+        )
+    ])
+
+    cmm.validate_grounded_parameters(
+        functions_def,
+        "Set enabled to true.",
+        "toggle",
+        {"enabled": True},
+    )
 
 
 @patch("src.call_me_maybe.Small_LLM_Model")
@@ -234,9 +265,7 @@ def test_generate_response_basic(mock_fsm_class):
 
     # FSM termine immédiatement sur END
     fake_fsm = MagicMock()
-    fake_fsm.is_in_fixed_sequence.return_value = False
-    fake_fsm.get_allowed_tokens.return_value = set()  # -> break immédiat
-    fake_fsm.param_repeat_pattern = None
+    fake_fsm.state = JSONState.STOP
     mock_fsm_class.return_value = fake_fsm
 
     result = cmm.generate_response(
@@ -257,13 +286,16 @@ def test_generate_response_fixed_sequence(mock_fsm_class):
     fake_functions_def = MagicMock()
 
     fake_fsm = MagicMock()
-    fake_fsm.param_repeat_pattern = None
-
-    # 1er appel: fixed sequence, 2ème appel: stop
-    fake_fsm.is_in_fixed_sequence.side_effect = [True, False]
+    fake_fsm.state = JSONState.START
+    fake_fsm.is_in_fixed_sequence.return_value = True
     fake_fsm.get_target_tokens_for_current_state.return_value = [10, 11]
-    fake_fsm.get_allowed_tokens.return_value = set()  # -> break au 2ème tour
-    fake_fsm.state = JSONState.STOP  # -> break après fixed sequence
+
+    def finish_after_target(token_id):
+        if token_id == 11:
+            fake_fsm.state = JSONState.STOP
+        return True
+
+    fake_fsm.update.side_effect = finish_after_target
     mock_fsm_class.return_value = fake_fsm
 
     result = cmm.generate_response(
@@ -276,6 +308,27 @@ def test_generate_response_fixed_sequence(mock_fsm_class):
     assert isinstance(result, str)
 
 
+@patch("src.call_me_maybe.JSONStateMachine")
+def test_generate_response_rejects_fixed_sequence_over_budget(mock_fsm_class):
+    fake_llm = make_fake_llm()
+    fake_functions_def = MagicMock()
+    fake_fsm = MagicMock()
+    fake_fsm.state = JSONState.START
+    fake_fsm.is_in_fixed_sequence.return_value = True
+    fake_fsm.get_target_tokens_for_current_state.return_value = [10, 11]
+    mock_fsm_class.return_value = fake_fsm
+
+    with pytest.raises(GenerationLimitError, match="max_res_tokens=1"):
+        cmm.generate_response(
+            fake_functions_def,
+            "test",
+            llm=fake_llm,
+            max_res_tokens=1,
+        )
+
+    fake_fsm.update.assert_not_called()
+
+
 @patch("src.call_me_maybe.next_token_selection")
 @patch("src.call_me_maybe.JSONStateMachine")
 def test_generate_response_forces_single_allowed_token(mock_fsm_class,
@@ -285,10 +338,15 @@ def test_generate_response_forces_single_allowed_token(mock_fsm_class,
     fake_functions_def = MagicMock()
 
     fake_fsm = MagicMock()
+    fake_fsm.state = JSONState.NAME_VAL
     fake_fsm.is_in_fixed_sequence.return_value = False
-    fake_fsm.get_allowed_tokens.side_effect = [{2}, set()]
-    fake_fsm.update.return_value = True
-    fake_fsm.param_repeat_pattern = None
+    fake_fsm.get_allowed_tokens.return_value = {2}
+
+    def finish_generation(token_id):
+        fake_fsm.state = JSONState.STOP
+        return True
+
+    fake_fsm.update.side_effect = finish_generation
     mock_fsm_class.return_value = fake_fsm
 
     cmm.generate_response(fake_functions_def, "test", llm=fake_llm)
@@ -307,9 +365,7 @@ def test_generate_response_loads_model_if_none(mock_fsm_class,
     fake_functions_def = MagicMock()
 
     fake_fsm = MagicMock()
-    fake_fsm.is_in_fixed_sequence.return_value = False
-    fake_fsm.get_allowed_tokens.return_value = set()
-    fake_fsm.param_repeat_pattern = None
+    fake_fsm.state = JSONState.STOP
     mock_fsm_class.return_value = fake_fsm
 
     cmm.generate_response(fake_functions_def, "What is 1+1?")

@@ -1,5 +1,6 @@
 import json
-from typing import Dict, List, Literal, Any
+from pathlib import Path
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -9,8 +10,10 @@ from pydantic import (
     create_model,
 )
 
-# JSON tyope mapping
-TYPE_MAPPING = {
+ParameterType = Literal["number", "string", "boolean"]
+
+
+TYPE_MAPPING: dict[ParameterType, type] = {
     "number": float,
     "string": str,
     "boolean": bool,
@@ -19,7 +22,7 @@ TYPE_MAPPING = {
 
 class Parameter(BaseModel):
     """Class representing a function parameter."""
-    type: str = Field(..., description="Type of the parameter")
+    type: ParameterType = Field(..., description="Type of the parameter")
 
 
 class FunctionSchema(BaseModel):
@@ -52,8 +55,14 @@ class FunctionsDefinition:
         ValueError: if function definition is invalid
     """
 
-    def __init__(self, functions: List[FunctionSchema]):
+    def __init__(self, functions: list[FunctionSchema]):
+        names = [function.name for function in functions]
+        if len(names) != len(set(names)):
+            raise ValueError("Function names must be unique")
         self.functions = functions
+        self._functions_by_name = {
+            function.name: function for function in functions
+        }
 
     @classmethod
     def from_json(cls, path_to_json: str) -> "FunctionsDefinition":
@@ -61,33 +70,36 @@ class FunctionsDefinition:
         and return an instance of FunctionsDefinition.
         """
         try:
-            with open(path_to_json, "r") as f:
-                data = json.load(f)
+            raw_text = Path(path_to_json).read_text(encoding="utf-8")
+            data = json.loads(raw_text)
+            if not isinstance(data, list):
+                raise ValueError("Function definitions must be a JSON list")
             functions = [FunctionSchema(**func) for func in data]
             return cls(functions)
         except FileNotFoundError as exc:
             raise ValueError(f"File not found: {path_to_json}") from exc
         except json.JSONDecodeError as exc:
             raise ValueError(f"Invalid JSON file: {path_to_json}") from exc
-        except ValidationError as exc:
+        except (TypeError, ValidationError) as exc:
             raise ValueError(f"Invalid function definition in: {exc}") from exc
-        except Exception as exc:
-            raise ValueError(f"Unexpected error : {exc}") from exc
 
     def list_functions_name(self) -> list[str]:
         return [func.name for func in self.functions]
 
     def get_function_by_name(self, name: str) -> FunctionSchema:
-        for func in self.functions:
-            if func.name == name:
-                return func
-        raise ValueError(f"Function with name '{name}' not found")
+        try:
+            return self._functions_by_name[name]
+        except KeyError as exc:
+            raise ValueError(f"Function with name '{name}' not found") from exc
 
     def get_function_description_by_name(self, name: str) -> str:
         func = self.get_function_by_name(name)
         return func.description
 
-    def get_function_parameters_by_name(self, name: str) -> Dict:
+    def get_function_parameters_by_name(
+        self,
+        name: str,
+    ) -> dict[str, Parameter]:
         func = self.get_function_by_name(name)
         return func.parameters
 

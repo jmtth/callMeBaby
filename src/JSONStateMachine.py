@@ -3,28 +3,31 @@ from typing import cast
 
 from src.models import JSONState
 from src import utils
-from llm_sdk import Small_LLM_Model
 from src.functions_manager import FunctionsDefinition, Parameter
+from src.grounding import validate_prompt_capacity
+from src.token_vocabulary import TokenModel, TokenVocabulary
+
+
+MAX_STRING_LENGTH = 80
 
 
 class JSONStateMachine:
     def __init__(self,
-                 model: Small_LLM_Model,
+                 model: TokenModel,
                  functions_def: FunctionsDefinition,
                  token_to_id: dict[str, int],
-                 prompt: str = ""):
+                 prompt: str = "",
+                 vocabulary: TokenVocabulary | None = None):
         """State machine to track the generation of a JSON function call.
 
         Attributes:
             model: The language model instance.
             state: The current state of the state machine.
-            buffer_tokens: A list of token IDs representing the generated text.
             current_text: The current text being generated.
             current_function_name: The name of the function being called.
         """
         self.model = model
         self.state = JSONState.START
-        self.buffer_tokens: list[int] = []
         self.current_text = ""
         self.current_function_name = ""
 
@@ -33,7 +36,9 @@ class JSONStateMachine:
         # to names that exist in the input schema.
         self.functions_names = functions_def.list_functions_name()
         self.functions = functions_def
+        self.prompt = prompt
         self.token_to_id = token_to_id
+        self.vocabulary = vocabulary or TokenVocabulary(model, token_to_id)
 
         # Normalize encodings (support lists, numpy arrays, tensors)
         def _norm_encode(s: str) -> list[int]:
@@ -60,14 +65,13 @@ class JSONStateMachine:
         }
 
         self.progress = 0
-        self.param_repeat_pattern = ""
         self.prompt_list = prompt.split()
         self.current_param_nb = 0
         self.total_params = 0  # Set when function name is known
         self.prompt_decimal_counts = utils.extract_decimal_counts(prompt)
 
     def _get_all_token_ids(self) -> set[int]:
-        return set(self.token_to_id.values())
+        return set(self.vocabulary.all_ids)
 
     def _get_adjusted_param_index(self) -> int:
         """Get the current parameter index, adjusted for PARAM_VAL state.
@@ -138,7 +142,16 @@ class JSONStateMachine:
 
     def get_target_tokens_for_current_state(self) -> list[int]:
         """"Get the target token ids for the current state."""
-        return self.targets.get(self.state, [])
+        target = self.targets.get(self.state, [])
+        return target[self.progress:]
+
+    def complete_empty_fixed_sequence(self) -> None:
+        """Advance a fixed state whose encoded target contains no token."""
+        if self.state not in self.targets or self.targets[self.state]:
+            raise ValueError("Current state is not an empty fixed sequence")
+        self._update_state()
+        self.current_text = ""
+        self.progress = 0
 
     def is_in_fixed_sequence(self) -> bool:
         """Check if we are currently in a fixed sequence of tokens
@@ -179,7 +192,6 @@ class JSONStateMachine:
                     self._get_allowed_tokens_for_string(
                         param_name,
                         self.current_text,
-                        self.token_to_id,
                     )
                 )
         return allowed_tokens
@@ -195,56 +207,49 @@ class JSONStateMachine:
             return self._allowed_tokens_for_param_number()
 
         elif param_type == "boolean":
-            # Only allow 'true' or 'false'
-            allowed_tokens = set()
-            for token_str, token_id in self.token_to_id.items():
-                clean_token = token_str.replace('Ġ', ' ').replace(' ', ' ')
-                if clean_token in {"true", "false"}:
-                    allowed_tokens.add(token_id)
+            for literal in ("true", "false"):
+                allowed_tokens.update(
+                    self._get_allowed_tokens_for_string(
+                        literal,
+                        self.current_text,
+                    )
+                )
             return allowed_tokens
 
         return allowed_tokens
 
     def _allowed_tokens_for_param_string(self) -> set[int]:
-        allowed_tokens: set[int] = set()
-        MAX_STRING_LENGTH = 80
-
-        quote_id = self.token_to_id.get('"')
-
-        if self.param_repeat_pattern:
-            # Force closing quote if we detect a repeating pattern,
-            # to prevent infinite loops.
-            self.param_repeat_pattern = ""
-            return {quote_id} if quote_id is not None else set()
-
-        if len(self.current_text) > MAX_STRING_LENGTH:
-            # Force closing quote
-            return {quote_id} if quote_id is not None else set()
+        quote_ids = self.vocabulary.exact_ids('"')
 
         if not self.current_text:
             # Start string with opening quote.
-            return {quote_id} if quote_id is not None else set()
+            return quote_ids
 
-        if self._get_current_param_name() == 'replacement':
-            allowed_tokens = self._allowed_tokens_for_replacement()
-            if allowed_tokens == set() and quote_id is not None:
-                # If no other token is allowed, at least allow closing quote.
-                return {quote_id} if quote_id is not None else set()
         if not self.current_text.startswith('"'):
             # Prevent generating unquoted strings.
             return set()
 
-        for token_str, token_id in self.token_to_id.items():
-            clean_token = token_str.replace('Ġ', ' ').replace(' ', ' ')
-            if '"' in clean_token:
-                continue
-            allowed_tokens.add(token_id)
+        if utils.get_repeating_pattern(self.current_text):
+            return quote_ids
 
-        if quote_id is not None:
-            # Closing quote must be a standalone token.
-            allowed_tokens.add(quote_id)
+        if self._get_current_param_name() == 'replacement':
+            allowed_tokens = self._allowed_tokens_for_replacement()
+        else:
+            allowed_tokens = self.vocabulary.json_string_content_ids()
 
-        return allowed_tokens
+        safe_tokens = {
+            token_id
+            for token_id in allowed_tokens
+            if self._is_safe_string_continuation(token_id)
+        }
+        safe_tokens.update(quote_ids)
+        return safe_tokens
+
+    def _is_safe_string_continuation(self, token_id: int) -> bool:
+        candidate = self.current_text + self.vocabulary.text(token_id)
+        if len(candidate) > MAX_STRING_LENGTH:
+            return False
+        return not utils.get_repeating_pattern(candidate)
 
     def _allowed_tokens_for_param_number(self) -> set[int]:
         text = self.current_text
@@ -253,8 +258,8 @@ class JSONStateMachine:
         target_decimals = self._get_target_decimals_for_current_param()
 
         digit_tokens = set()
-        for token_id in utils.get_number_token_ids(self.token_to_id):
-            token_text = self.model.decode([token_id])
+        for token_id in self.vocabulary.number_fragment_ids():
+            token_text = self.vocabulary.text(token_id)
             candidate = text + token_text
 
             if not utils.is_valid_number_fragment(candidate):
@@ -295,8 +300,7 @@ class JSONStateMachine:
             if has_dot and frac_len < 2:
                 return digit_tokens
 
-        terminator_tokens = utils.get_number_terminator_token_ids(
-            self.token_to_id)
+        terminator_tokens = self.vocabulary.number_terminator_ids()
         if terminator_tokens:
             # Once a complete value has reached the expected precision, stop
             # extending it. Otherwise greedy decoding can emit digits until the
@@ -315,47 +319,42 @@ class JSONStateMachine:
                 self._get_allowed_tokens_for_string(
                     s,
                     self.current_text,
-                    self.token_to_id,
                 )
             )
+        if self.current_text in self.functions_names:
+            boundary_state = self._state_after_function_name()
+            if boundary_state is not None:
+                target = self.targets[boundary_state]
+                if target:
+                    allowed_tokens.add(target[0])
         return allowed_tokens
 
     def _allowed_tokens_for_replacement(self) -> set[int]:
         allowed_tokens: set[int] = set()
+        generated = self.current_text[1:]  # Skip the opening quote.
         still_possible = [
-            s for s in self.prompt_list
-            if s.startswith(self.current_text[1:])  # Skip the opening quote
+            value for value in self.prompt_list if value.startswith(generated)
         ]
         for s in still_possible:
             allowed_tokens.update(
                 self._get_allowed_tokens_for_string(
                     s,
-                    self.current_text,
-                    self.token_to_id,
+                    generated,
                 )
             )
+        if generated in self.prompt_list:
+            allowed_tokens.update(self.vocabulary.exact_ids('"'))
         return allowed_tokens
 
     def _get_allowed_tokens_for_string(
         self,
         target_string: str,
         current_generated_text: str,
-        token_to_id: dict[str, int],
     ) -> set[int]:
-        # if the current generated text already matches the target string
-        # only allow a space or end token to prevent further generation
-        if current_generated_text == target_string:
-            space_id = token_to_id.get(" ")
-            return {space_id} if space_id is not None else set()
-
-        remaining = target_string[len(current_generated_text):]
-
-        allowed = set()
-        for token_str, t_id in token_to_id.items():
-            clean_token = token_str.replace('Ġ', ' ').replace(' ', ' ')
-            if remaining.startswith(clean_token) and clean_token != "":
-                allowed.add(t_id)
-        return allowed
+        return self.vocabulary.ids_continuing(
+            target_string,
+            current_generated_text,
+        )
 
     def update(self, token_id: int) -> bool:
         """Update the state machine with the new token.
@@ -369,7 +368,19 @@ class JSONStateMachine:
 
         Returns:
             bool: whether to keep the token (True) or not (False)."""
-        token_text = self.model.decode([token_id])
+        token_text = self.vocabulary.text(token_id)
+
+        if self.state == JSONState.NAME_VAL:
+            boundary_state = self._state_after_function_name()
+            if (
+                boundary_state is not None
+                and self.targets[boundary_state]
+                and token_id == self.targets[boundary_state][0]
+            ):
+                self._commit_current_function()
+                self.state = boundary_state
+                self.current_text = ""
+                self.progress = 0
 
         if self.state == JSONState.PARAM_VAL:
             param_type = self._get_current_param_type()
@@ -382,7 +393,6 @@ class JSONStateMachine:
                 self.current_text = ""
                 return False
 
-        self.buffer_tokens.append(token_id)
         self.current_text += token_text
 
         if self.state in self.targets:
@@ -398,23 +408,6 @@ class JSONStateMachine:
 
         elif self.state == JSONState.NAME_VAL:
             self.current_function_name = self.current_text
-            if self.current_text in self.functions_names:
-                self.total_params = self.functions.get_nb_parameters(
-                    self.current_function_name
-                )
-                if self.total_params == 0:
-                    self.state = JSONState.EMPTY_PARAMS
-                else:
-                    self._update_state()
-                self.current_text = ""
-
-        elif self.state == JSONState.PARAMS_KEY:
-            params = self._get_current_function_params()
-            if params is not None:
-                params_names = [*params.keys()]
-                if self.current_text in params_names:
-                    self._update_state()
-                    self.current_text = ""
 
         elif self.state == JSONState.PARAM_NAME:
             params = self._get_current_function_params()
@@ -427,14 +420,12 @@ class JSONStateMachine:
 
         elif self.state == JSONState.PARAM_VAL:
             param_type = self._get_current_param_type()
-            self.param_repeat_pattern = utils.get_repeating_pattern(
-                self.current_text)
             if (
-                param_type == "string"
-                and self.param_repeat_pattern
+                param_type == "boolean"
+                and self.current_text in {"true", "false"}
             ):
-                self.current_text = self.current_text[:-len(
-                    self.param_repeat_pattern)]
+                self._update_state()
+                self.current_text = ""
             elif (
                 param_type == "string"
                 and len(self.current_text) > 1
@@ -445,6 +436,26 @@ class JSONStateMachine:
                 self.current_text = ""
 
         return True
+
+    def _state_after_function_name(self) -> JSONState | None:
+        """Return the structural state selected by a complete function name."""
+        if self.current_text not in self.functions_names:
+            return None
+        if self.functions.get_nb_parameters(self.current_text) == 0:
+            return JSONState.EMPTY_PARAMS
+        return JSONState.PARAMS_KEY
+
+    def _commit_current_function(self) -> None:
+        """Store the function selected by an explicit boundary token."""
+        validate_prompt_capacity(
+            self.functions,
+            self.prompt,
+            self.current_text,
+        )
+        self.current_function_name = self.current_text
+        self.total_params = self.functions.get_nb_parameters(
+            self.current_function_name
+        )
 
     def _update_state(self) -> None:
         if self.state == JSONState.START:

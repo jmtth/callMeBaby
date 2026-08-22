@@ -1,6 +1,3 @@
-from llm_sdk import Small_LLM_Model
-
-
 def get_repeating_pattern(text: str,
                           min_len: int = 3,
                           max_repeats: int = 2) -> str:
@@ -32,29 +29,3 @@ def get_repeating_pattern(text: str,
             start -= len_pattern
         pattern_count = 1
     return ""
-
-
-def remove_repeating_pattern(model: Small_LLM_Model,
-                             response: list[int],
-                             pattern: str) -> list[int]:
-    """Remove the repeating pattern from the end of the token list.
-
-    args:
-        model (Small_LLM_Model): the model used to encode the pattern.
-        response (list[int]): the list of token ids representing the response.
-        pattern (str): the repeating pattern to remove.
-
-    returns:
-        list[int]: the list of token ids with the repeating pattern removed.
-    """
-    if not pattern:
-        return response
-    enc0 = model.encode(pattern)[0]
-    if hasattr(enc0, "tolist"):
-        pattern_tokens = enc0.tolist()
-    else:
-        pattern_tokens = list(enc0)
-    pattern_len = len(pattern_tokens)
-    if response[-pattern_len:] == pattern_tokens:
-        response = response[:-pattern_len]
-    return response

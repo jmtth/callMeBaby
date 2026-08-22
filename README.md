@@ -71,17 +71,21 @@ The generation pipeline works as follows:
 2. `build_prompt` gives the model the names, descriptions, parameter names,
    and parameter types from the selected definition file.
 3. The prompt is encoded into token IDs with the public SDK API.
-4. `JSONStateMachine` tracks the position in the required output schema.
-5. Fixed JSON fragments, such as keys and punctuation, are emitted directly.
-6. At dynamic states, the FSM computes the token IDs that keep the partial
+4. `TokenVocabulary` indexes decoded token text and reusable token classes.
+5. `JSONStateMachine` tracks the position in the required output schema.
+6. Fixed JSON fragments, such as keys and punctuation, are emitted directly.
+7. At dynamic states, the FSM computes the token IDs that keep the partial
    output compatible with the schema.
-7. Invalid token logits are excluded, and the highest remaining logit selects
+8. Only allowed logits are compared, and the highest remaining logit selects
    the next token. If only one token is structurally possible, it is emitted
    directly without an unnecessary model inference.
-8. Once a complete function name has been selected by the LLM, the FSM loads
+9. `GenerationBuffer` owns the generated IDs, model context, and exact response
+   token budget, avoiding divergent copies of the generated sequence.
+10. Once a complete function name has been selected by the LLM, the FSM loads
    that function's parameters and constrains each parameter name and value to
-   its declared type.
-9. The completed JSON is parsed and validated again with a dynamically created
+   its declared type. If the prompt lacks enough number or boolean literals,
+   generation stops immediately with an explicit error.
+11. The completed JSON is parsed and validated again with a dynamically created
    Pydantic output model.
 
 Function selection is performed by the LLM logits. The FSM does not use
@@ -95,12 +99,15 @@ restricts the output to functions present in the supplied definition file.
 - A state machine separates structural JSON generation from semantic choices.
 - Fixed sequences bypass model inference because their tokens contain no choice.
 - Function names are generated from prefixes that remain valid for at least one
-  supplied function.
+  supplied function. A boundary token explicitly distinguishes a short name
+  from a longer function sharing the same prefix.
 - Parameter names follow the order declared in the input schema.
 - Number generation accepts only valid numeric fragments and forces a delimiter
   when the expected precision is complete.
-- String values have a bounded length and repetition detection to prevent an
-  endless generation loop.
+- String values have a bounded length. Unsafe unescaped JSON fragments and
+  fragments that would create a repetition are rejected before insertion.
+- Boolean literals support both single-token and multi-token tokenizers and
+  advance the FSM immediately after `true` or `false` is complete.
 - Functions with no parameters use a dedicated state that emits an empty
   `parameters` object and closes the outer JSON object correctly.
 - Pydantic validates both input definitions and generated output types.
@@ -112,10 +119,9 @@ pass for each token that requires a semantic choice. Fixed JSON sequences and
 single-token structural choices are emitted without a logits call. This reduces
 work for common prefixes, parameter names, punctuation, and closing sequences.
 
-The implementation uses NumPy masking for the remaining choices: all invalid
-token positions are set to negative infinity before `argmax` selects the best
-valid token. Model loading is performed once and reused for every prompt in the
-input file.
+The implementation compares logits only at allowed token positions before
+`argmax` selects the best valid token. Model loading and the decoded vocabulary
+cache are reused for every prompt in the input file.
 
 Actual runtime depends on CPU, CUDA, or MPS performance and should be measured
 with the complete evaluation input rather than a single prompt.
@@ -145,7 +151,10 @@ The test suite covers:
 - escaped quotes in the original prompt;
 - string, number, and empty-parameter generation;
 - numeric fragments, precision, and termination tokens;
-- repetition detection and removal;
+- proactive repetition prevention without token re-encoding;
+- boolean completion and function names with shared prefixes;
+- exact, atomic response-token budget enforcement;
+- a state-step guard and early rejection of missing typed prompt values;
 - model-loading error handling without loading a real model in unit tests;
 - CLI defaults and response generation branches.
 

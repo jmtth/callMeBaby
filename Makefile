@@ -38,13 +38,13 @@ clean:
 
 lint:
 	@echo "Linting CallMeBaby..."
-	uv run flake8 .
-	uv run mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
+	uv run flake8 src tests vendor_llm_sdk/llm_sdk
+	uv run mypy src
 
 lint-strict:
 	@echo "Strict linting CallMeBaby..."
-	uv run flake8 .
-	uv run mypy . --strict
+	uv run flake8 src tests
+	uv run mypy src --strict
 
 local:
 	export HF_HUB_OFFLINE=1

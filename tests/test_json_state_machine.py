@@ -66,6 +66,17 @@ class EmptyParamFunctionsDef:
         return 0
 
 
+class PrefixFunctionsDef:
+    def list_functions_name(self):
+        return ["get", "get_weather"]
+
+    def get_function_parameters_by_name(self, name: str):
+        return {}
+
+    def get_nb_parameters(self, name: str):
+        return 0
+
+
 class FakeModel:
     def encode(self, s: str):
         # return a list-like structure where [0] is a list of ints
@@ -75,6 +86,21 @@ class FakeModel:
 
     def decode(self, ids: list[int]) -> str:
         return ''.join(chr(i) for i in ids)
+
+
+class MappedFakeModel(FakeModel):
+    """Fake model whose non-ASCII token IDs decode from a supplied vocab."""
+
+    def __init__(self, token_to_id: dict[str, int]):
+        self.id_to_token = {
+            token_id: token for token, token_id in token_to_id.items()
+        }
+
+    def decode(self, ids: list[int]) -> str:
+        return ''.join(
+            self.id_to_token.get(token_id, chr(token_id))
+            for token_id in ids
+        )
 
 
 class TensorLikeEncoding:
@@ -353,14 +379,14 @@ def test_get_allowed_tokens_falls_back_to_all_vocabulary_ids():
 
 def test_allowed_tokens_for_boolean_parameter():
     """A boolean parameter allows only the literal true and false tokens."""
-    model = cast(Small_LLM_Model, FakeModel())
-    funcs = cast(FunctionsDefinition, BooleanParamFunctionsDef())
     token_to_id = {
         "true": 10,
         "false": 20,
         "null": 30,
         "yes": 40,
     }
+    model = cast(Small_LLM_Model, MappedFakeModel(token_to_id))
+    funcs = cast(FunctionsDefinition, BooleanParamFunctionsDef())
 
     sm = JSONStateMachine(model, funcs, token_to_id)
     sm.state = JSONState.PARAM_VAL
@@ -368,6 +394,22 @@ def test_allowed_tokens_for_boolean_parameter():
     sm.current_param_nb = 0
 
     assert sm.get_allowed_tokens() == {10, 20}
+
+
+def test_boolean_parameter_transitions_after_complete_literal():
+    """A completed boolean value advances instead of repeating forever."""
+    token_to_id = {"true": 10, "false": 20}
+    model = cast(Small_LLM_Model, MappedFakeModel(token_to_id))
+    funcs = cast(FunctionsDefinition, BooleanParamFunctionsDef())
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.PARAM_VAL
+    sm.current_function_name = "fn_toggle"
+    sm.current_param_nb = 1
+    sm.total_params = 1
+
+    assert sm.update(10) is True
+    assert sm.state == JSONState.END
+    assert sm.current_text == ""
 
 
 def test_allowed_tokens_for_unsupported_parameter_type_is_empty():
@@ -385,22 +427,20 @@ def test_allowed_tokens_for_unsupported_parameter_type_is_empty():
 
 
 def test_allowed_tokens_for_repeat_pattern():
-    """A detected repetition forces the string's closing quote."""
-    model = cast(Small_LLM_Model, FakeModel())
-    funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
+    """An existing repetition leaves only the string's closing quote."""
     token_to_id = {"a": 10, "b": 20, "c": 30, "\"": 40}
+    model = cast(Small_LLM_Model, MappedFakeModel(token_to_id))
+    funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
 
     sm = JSONStateMachine(model, funcs, token_to_id)
     sm.state = JSONState.PARAM_VAL
     sm.current_function_name = "fn_echo"
     sm.current_param_nb = 0
-    sm.current_text = "abcabc"
-    sm.param_repeat_pattern = "abc"
+    sm.current_text = '"abcabc'
 
     allowed_tokens = sm.get_allowed_tokens()
 
     assert allowed_tokens == {40}
-    assert sm.param_repeat_pattern == ""
 
 
 def test_prompt_target_escapes_quotes_for_json_string():
@@ -426,9 +466,9 @@ def test_allowed_tokens_for_string_value_uses_actual_token_ids():
     """Test that the allowed tokens for a string value use
     the actual token IDs.
     """
-    model = FakeModel()
-    funcs = StringParamFunctionsDef()
     token_to_id = {"x": 10, '"': 42, "y": 99}
+    model = MappedFakeModel(token_to_id)
+    funcs = StringParamFunctionsDef()
 
     sm = JSONStateMachine(
         cast(Small_LLM_Model, model),
@@ -449,13 +489,29 @@ def test_allowed_tokens_for_string_value_uses_actual_token_ids():
     assert allowed_tokens == {10, 42, 99}
 
 
+def test_string_value_rejects_fragments_that_need_json_escaping():
+    token_to_id = {'"': 10, "safe": 20, "\n": 30, "\\": 40}
+    model = MappedFakeModel(token_to_id)
+    funcs = StringParamFunctionsDef()
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs),
+        token_to_id,
+    )
+    sm.state = JSONState.PARAM_VAL
+    sm.current_function_name = "fn_echo"
+    sm.current_text = '"'
+
+    assert sm.get_allowed_tokens() == {10, 20}
+
+
 def test_number_value_allows_only_terminators_after_precision_is_met():
     """Test that for a number parameter, once the precision of
     the prompt value is met,the allowed tokens include only terminators.
     """
-    model = FakeModel()
-    funcs = NumberParamFunctionsDef()
     token_to_id = {"1": 11, "2": 22, ",": 33, " ": 44, "}": 55, ".": 66}
+    model = MappedFakeModel(token_to_id)
+    funcs = NumberParamFunctionsDef()
 
     sm = JSONStateMachine(
         cast(Small_LLM_Model, model),
@@ -483,7 +539,38 @@ def test_empty_parameter_function_generates_complete_json_suffix():
         sm.update(ord(char))
 
     assert sm.current_function_name == "fn_ping"
+    boundary_token = next(iter(sm.get_allowed_tokens()))
+    sm.update(boundary_token)
     assert sm.state == JSONState.EMPTY_PARAMS
     assert model.decode(sm.get_target_tokens_for_current_state()) == (
-        '\", "parameters": {}}'
+        ', "parameters": {}}'
     )
+
+
+def test_function_name_prefix_can_continue_or_terminate():
+    """A short function name does not hide a longer name sharing its prefix."""
+    model = FakeModel()
+    funcs = PrefixFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs),
+        token_to_id,
+    )
+    sm.state = JSONState.NAME_VAL
+
+    for char in "get":
+        sm.update(ord(char))
+
+    assert sm.state == JSONState.NAME_VAL
+    assert ord("_") in sm.get_allowed_tokens()
+    assert ord('"') in sm.get_allowed_tokens()
+
+    for char in "_weather":
+        sm.update(ord(char))
+    boundary_id = ord('"')
+    assert sm.get_allowed_tokens() == {boundary_id}
+
+    sm.update(boundary_id)
+    assert sm.current_function_name == "get_weather"
+    assert sm.state == JSONState.EMPTY_PARAMS

@@ -1,13 +1,4 @@
 from src import utils
-from llm_sdk import Small_LLM_Model
-from typing import cast
-
-
-class FakeModel:
-    """Minimal public encode implementation used by utility unit tests."""
-
-    def encode(self, text: str) -> list[list[int]]:
-        return [[ord(c) for c in text]]
 
 
 def test_get_repeating_pattern():
@@ -25,48 +16,3 @@ def test_get_repeating_pattern():
     assert utils.get_repeating_pattern("") == ""
     assert utils.get_repeating_pattern(
         "qwertyu", min_len=3, max_repeats=2) == ""
-
-
-def test_remove_repeating_pattern():
-    """Test the remove_repeating_pattern function with various inputs."""
-    model = cast(Small_LLM_Model, FakeModel())
-    response = [ord(c) for c in "catcatcat"]
-    pattern = "cat"
-    new_response = utils.remove_repeating_pattern(model, response, pattern)
-    assert new_response == [ord(c) for c in "catcat"]
-
-    response = [ord(c) for c in "abcabc"]
-    pattern = "abc"
-    new_response = utils.remove_repeating_pattern(model, response, pattern)
-    assert new_response == [ord(c) for c in "abc"]
-
-    response = [ord(c) for c in "abcab"]
-    pattern = "abc"
-    new_response = utils.remove_repeating_pattern(model, response, pattern)
-    assert new_response == [ord(c) for c in "abcab"]
-
-    response = [ord(c) for c in "aaaaaa"]
-    pattern = "a"
-    new_response = utils.remove_repeating_pattern(model, response, pattern)
-    assert new_response == [ord(c) for c in "aaaaa"]
-
-
-def test_remove_repeating_pattern_empty_pattern():
-    """Test the remove_repeating_pattern function with an empty pattern."""
-    model = cast(Small_LLM_Model, FakeModel())
-    response = [ord(c) for c in "catcat"]
-    new_response = utils.remove_repeating_pattern(model, response, "")
-    assert new_response == response
-
-
-def test_remove_repeating_pattern_tensor():
-    """Test the remove_repeating_pattern function with a tensor response."""
-    from unittest.mock import MagicMock
-    mock_model = MagicMock()
-    tensor_mock = MagicMock()
-    tensor_mock.tolist.return_value = [ord(c) for c in "cat"]
-    mock_model.encode.return_value = [tensor_mock]
-
-    response = [ord(c) for c in "catcatcat"]
-    new_response = utils.remove_repeating_pattern(mock_model, response, "cat")
-    assert new_response == [ord(c) for c in "catcat"]

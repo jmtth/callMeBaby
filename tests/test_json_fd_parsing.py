@@ -1,5 +1,11 @@
 
-from src.functions_manager import FunctionsDefinition, Parameter
+from pydantic import ValidationError
+
+from src.functions_manager import (
+    FunctionSchema,
+    FunctionsDefinition,
+    Parameter,
+)
 from src.call_me_maybe import main
 import pytest
 
@@ -84,6 +90,18 @@ def test_valid_functions_definition():
                        "fn_get_square_root",
                        "fn_substitute_string_with_regex"]
     assert functions_def.list_functions_name() == functions_names
+
+
+def test_parameter_rejects_unsupported_type():
+    with pytest.raises(ValidationError):
+        Parameter(type="array")  # type: ignore[arg-type]
+
+
+def test_functions_definition_rejects_duplicate_names():
+    duplicate = FunctionSchema(name="duplicate")
+
+    with pytest.raises(ValueError, match="Function names must be unique"):
+        FunctionsDefinition([duplicate, duplicate])
 
 
 def test_get_function_by_name():
