@@ -1,21 +1,11 @@
 from src import utils
-from llm_sdk.llm_sdk import Small_LLM_Model
-from torch import Tensor
-from typing import cast
 
 
-class FakeModel(Small_LLM_Model):
-    def __init__(self):
-        system = __import__("platform").system().lower()
-        if system == 'linux':
-            device = "cpu"
-        else:
-            device = "mps"
-        super().__init__(device=device)
+class FakeModel:
+    """Minimal public encode implementation used by utility unit tests."""
 
-    def encode(self, text) -> Tensor:
-        # return a value compatible with the base class return type for typing
-        return cast(Tensor, [[ord(c) for c in text]])
+    def encode(self, text: str) -> list[list[int]]:
+        return [[ord(c) for c in text]]
 
 
 def test_get_repeating_pattern():

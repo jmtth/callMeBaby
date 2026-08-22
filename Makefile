@@ -26,11 +26,11 @@ test:
 
 coverage:
 	@echo "Running tests with coverage for CallMeBaby..."
-	uv run pytest --cov
+	uv run pytest --cov --cov-report=term-missing
 
 debug:
 	@echo "Debugging CallMeBaby..."
-	uv run python -m pdb main.py
+	uv run python -m pdb -m src
 
 clean:
 	@echo "Cleaning up..."
@@ -38,13 +38,13 @@ clean:
 
 lint:
 	@echo "Linting CallMeBaby..."
-	uv run flake8 ./src
-	uv run mypy ./src --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
+	uv run flake8 .
+	uv run mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
 
 lint-strict:
 	@echo "Strict linting CallMeBaby..."
-	uv run flake8 ./src
-	uv run mypy ./src --strict
+	uv run flake8 .
+	uv run mypy . --strict
 
 local:
 	export HF_HUB_OFFLINE=1

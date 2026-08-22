@@ -10,10 +10,10 @@ dependencies = [
 ]
 
 [tool.uv.workspace]
-members = ["llm_sdk"]
+members = ["vendor_llm_sdk"]
 
 [tool.uv.sources]
-llm-sdk = { workspace = true, editable = true }
+llm-sdk = { workspace = true, editable = false }
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -21,6 +21,7 @@ testpaths = ["tests"]
 
 [tool.mypy]
 mypy_path = "."
+exclude = "^(tests|vendor_llm_sdk)/"
 #ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

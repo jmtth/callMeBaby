@@ -8,6 +8,7 @@ class JSONState(Enum):
     NAME_KEY = auto()       # ", "name": "
     NAME_VAL = auto()       # [Nom de la fonction]
     PARAMS_KEY = auto()     # ", "parameters": {
+    EMPTY_PARAMS = auto()   # ", "parameters": {}
     PARAM_NAME = auto()     # "nom_du_parametre"
     PARAM_COLON = auto()    # :
     PARAM_VAL = auto()      # [Valeur selon le type]

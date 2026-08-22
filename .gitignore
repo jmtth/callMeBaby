@@ -28,6 +28,4 @@ venv.bak/
 #model files
 .hf_cache/
 
-#llm_sdk
-llm_sdk/
 *.zip

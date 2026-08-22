@@ -25,17 +25,20 @@ def test_main_runs_without_error():
         call_me_maybe.run_cli = original_run_cli
 
     assert called["args"] == (
-        "data/input/functions_definition.json", None, None)
+        "data/input/functions_definition.json",
+        None,
+        None,
+    )
 
 
 def test_main_with_nonexistent_functions_definition():
-    """Test that the main function raises ValueError
-    when given a non-existent functions definition file.
-    """
-    with pytest.raises(ValueError) as exc:
-        main(["--functions_definition",
-              "./tests/data/nonexistent_functions_definition.json"])
-    assert "File not found" in str(exc.value)
+    """Test that main reports a missing function-definition file."""
+    return_code = main([
+        "--functions_definition",
+        "./tests/data/nonexistent_functions_definition.json",
+    ])
+
+    assert return_code == 1
 
 
 def test_wrong_functions_definition():

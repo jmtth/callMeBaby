@@ -1,4 +1,5 @@
 from src import utils
+from decimal import Decimal
 
 
 def test_extract_decimal_counts():
@@ -16,6 +17,14 @@ def test_extract_decimal_counts():
     assert utils.extract_decimal_counts("-.e-5") == [1]
     assert utils.extract_decimal_counts("-.5e-5") == [1, 1]
     assert utils.extract_decimal_counts("fjhd.fj") == []
+
+
+def test_extract_numbers_preserves_numeric_values():
+    assert utils.extract_numbers("Use 34, -2.5 and 1e3") == [
+        Decimal("34"),
+        Decimal("-2.5"),
+        Decimal("1e3"),
+    ]
 
 
 def test_is_valid_number_fragment():

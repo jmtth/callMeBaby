@@ -1,7 +1,13 @@
 import json
 from typing import Dict, List, Literal, Any
 
-from pydantic import BaseModel, Field, ValidationError, create_model
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    create_model,
+)
 
 # JSON tyope mapping
 TYPE_MAPPING = {
@@ -20,7 +26,10 @@ class FunctionSchema(BaseModel):
     """Class representing a function schema."""
     name: str = Field(..., description="Name of the function")
     description: str = Field("", description="Description of the function")
-    parameters: dict[str, Parameter] = Field({}, description="Parameters")
+    parameters: dict[str, Parameter] = Field(
+        default_factory=dict,
+        description="Parameters",
+    )
 
 
 class FunctionsDefinition:
@@ -106,13 +115,16 @@ class FunctionsDefinition:
             param_name: (TYPE_MAPPING[param.type], ...)
             for param_name, param in func.parameters.items()
         }
-        ParamsModel: type[BaseModel] = create_model(f"{func.name}_params",
-                                                    **params_fields)
+        ParamsModel: type[BaseModel] = create_model(
+            f"{func.name}_params",
+            __config__=ConfigDict(extra="forbid"),
+            **params_fields,
+        )
         OutputSchema: type[BaseModel] = create_model(
             f"{func.name}_output",
             prompt=(str, ...),
             name=(Literal[func.name], func.name),
             parameters=(ParamsModel, ...),
-            __base__=BaseModel,
+            __config__=ConfigDict(extra="forbid"),
         )
         return OutputSchema

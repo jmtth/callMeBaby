@@ -15,7 +15,7 @@ def test_build_prompt_includes_functions():
 
     result = cmm.build_prompt(fakeFunctionsDefinition, "What is 1+1?")
 
-    assert "You are a assistant that helps with function calls.\n\n" in result
+    assert "Select exactly one of the available functions" in result
     assert "Here are the available functions:" in result
     assert "What is 1+1?" in result
     assert "add" in result
@@ -87,10 +87,46 @@ def test_next_token_selection_no_allowed_tokens():
         cmm.next_token_selection(
             fake_model, fake_current_ids, fake_allowed_ids)
 
-def test_load_model():
+
+def test_grounded_numeric_parameters_accept_prompt_values():
+    functions_def = cmm.FunctionsDefinition.from_json(
+        "tests/data/valid_functions_definition.json"
+    )
+
+    cmm.validate_grounded_parameters(
+        functions_def,
+        "What is the sum of 34 and 2?",
+        "fn_add_numbers",
+        {"a": 34.0, "b": 2.0},
+    )
+
+
+def test_grounded_numeric_parameters_reject_invented_value():
+    functions_def = cmm.FunctionsDefinition.from_json(
+        "tests/data/valid_functions_definition.json"
+    )
+
+    with pytest.raises(ValueError, match="was not found in the user prompt"):
+        cmm.validate_grounded_parameters(
+            functions_def,
+            "What is the sum of 34 and toto?",
+            "fn_add_numbers",
+            {"a": 34.0, "b": 3.0},
+        )
+
+
+@patch("src.call_me_maybe.Small_LLM_Model")
+def test_load_model(mock_model_class):
     """Test that the load_model function returns an object
     with the expected methods."""
-    model = cmm.load_model()
+    mock_model = MagicMock()
+    mock_model.get_path_to_vocab_file.return_value = "/fake/vocab.json"
+    mock_model_class.return_value = mock_model
+
+    fake_vocab = {"hello": 0, "world": 1}
+    with patch("builtins.open", mock_open(read_data=json.dumps(fake_vocab))):
+        model = cmm.load_model()
+
     assert hasattr(model[0], "encode")
     assert callable(model[0].encode)
     assert hasattr(model[0], "decode")
@@ -98,8 +134,9 @@ def test_load_model():
     assert hasattr(model[0], "get_logits_from_input_ids")
     assert callable(model[0].get_logits_from_input_ids)
 
+
 @patch("src.call_me_maybe.Small_LLM_Model")
-@patch("src.call_me_maybe.platform.system")
+@patch("platform.system")
 def test_load_model_linux(mock_system, mock_model_class):
     """Test load_model on Linux uses cpu device."""
     # Simulate Linux
@@ -116,14 +153,12 @@ def test_load_model_linux(mock_system, mock_model_class):
         model, token_to_id = cmm.load_model()
 
     # Verify device is cpu on Linux
-    mock_model_class.assert_called_with(device="cpu",
-                                        cache_dir="./.hf_cache",
-                                        local_files_only=True)
+    mock_model_class.assert_called_once_with(device="cpu")
     assert token_to_id == {"hello": 0, "world": 1}
 
 
 @patch("src.call_me_maybe.Small_LLM_Model")
-@patch("src.call_me_maybe.platform.system")
+@patch("platform.system")
 def test_load_model_mac(mock_system, mock_model_class):
     """Test load_model on Mac uses mps device."""
     # Simulate Mac
@@ -138,53 +173,42 @@ def test_load_model_mac(mock_system, mock_model_class):
         model, token_to_id = cmm.load_model()
 
     # Verify device is mps on Mac
-    mock_model_class.assert_called_with(device="mps",
-                                        cache_dir="./.hf_cache",
-                                        local_files_only=True)
+    mock_model_class.assert_called_once_with(device="mps")
 
 
 @patch("src.call_me_maybe.Small_LLM_Model")
-@patch("src.call_me_maybe.platform.system")
+@patch("platform.system")
 def test_load_model_fallback(mock_system, mock_model_class):
-    """Test load_model fallback when local files not found."""
+    """Test that model-loading errors are reported without a traceback."""
     mock_system.return_value = "Linux"
+    mock_model_class.side_effect = Exception("No local files")
 
-    mock_model = MagicMock()
-    mock_model.get_path_to_vocab_file.return_value = "/fake/vocab.json"
+    with pytest.raises(SystemExit) as exc:
+        cmm.load_model()
 
-    # First call raises exception, second call succeeds
-    mock_model_class.side_effect = [Exception("No local files"), mock_model]
-
-    fake_vocab = {"hello": 0, "world": 1}
-    with patch("builtins.open", mock_open(read_data=json.dumps(fake_vocab))):
-        model, token_to_id = cmm.load_model()
-
-    # Verify fallback call with local_files_only=False
-    assert mock_model_class.call_count == 2
-    mock_model_class.assert_called_with(device="cpu",
-                                        cache_dir="./.hf_cache",
-                                        local_files_only=False)
+    assert exc.value.code == 1
+    mock_model_class.assert_called_once_with(device="cpu")
 
 
 def make_fake_llm():
     """Helper qui crée un faux llm tuple (model, token_to_id)"""
     fake_model = MagicMock()
-    
+
     # encode(prompt)[0].tolist() -> [1, 2, 3]
     fake_tensor = MagicMock()
     fake_tensor.tolist.return_value = [1, 2, 3]
     fake_model.encode.return_value = [fake_tensor]  # encode()[0] = fake_tensor
-    
+
     fake_model.decode.return_value = '{"name": "fn_add_numbers"}'
-    
+
     fake_token_to_id = {"hello": 0, "world": 1}
-    
+
     return (fake_model, fake_token_to_id)
 
 
 def make_fake_fsm(states: list):
     """Helper qui crée un faux JSONStateMachine
-    
+
     Args:
         states: liste de JSONState que fsm.state retournera successivement
     """
@@ -193,11 +217,11 @@ def make_fake_fsm(states: list):
     fake_fsm.get_allowed_tokens.return_value = {1, 2, 3}
     fake_fsm.update.return_value = True
     fake_fsm.param_repeat_pattern = None
-    
+
     # Simule les états successifs
     fake_fsm.state = MagicMock()
     type(fake_fsm).state = MagicMock(side_effect=states)
-    
+
     return fake_fsm
 
 
@@ -252,9 +276,31 @@ def test_generate_response_fixed_sequence(mock_fsm_class):
     assert isinstance(result, str)
 
 
+@patch("src.call_me_maybe.next_token_selection")
+@patch("src.call_me_maybe.JSONStateMachine")
+def test_generate_response_forces_single_allowed_token(mock_fsm_class,
+                                                       mock_next_token):
+    """A structural singleton does not require another LLM logits call."""
+    fake_llm = make_fake_llm()
+    fake_functions_def = MagicMock()
+
+    fake_fsm = MagicMock()
+    fake_fsm.is_in_fixed_sequence.return_value = False
+    fake_fsm.get_allowed_tokens.side_effect = [{2}, set()]
+    fake_fsm.update.return_value = True
+    fake_fsm.param_repeat_pattern = None
+    mock_fsm_class.return_value = fake_fsm
+
+    cmm.generate_response(fake_functions_def, "test", llm=fake_llm)
+
+    mock_next_token.assert_not_called()
+    fake_fsm.update.assert_called_once_with(2)
+
+
 @patch("src.call_me_maybe.load_model")
 @patch("src.call_me_maybe.JSONStateMachine")
-def test_generate_response_loads_model_if_none(mock_fsm_class, mock_load_model):
+def test_generate_response_loads_model_if_none(mock_fsm_class,
+                                               mock_load_model):
     """Test que load_model est appelé si llm=None."""
     fake_llm = make_fake_llm()
     mock_load_model.return_value = fake_llm
@@ -266,6 +312,6 @@ def test_generate_response_loads_model_if_none(mock_fsm_class, mock_load_model):
     fake_fsm.param_repeat_pattern = None
     mock_fsm_class.return_value = fake_fsm
 
-    cmm.generate_response(fake_functions_def, "What is 1+1?")  # llm=None par défaut
+    cmm.generate_response(fake_functions_def, "What is 1+1?")
 
     mock_load_model.assert_called_once()

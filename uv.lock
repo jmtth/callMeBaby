@@ -78,7 +78,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "accelerate", specifier = ">=1.13.0" },
-    { name = "llm-sdk", editable = "llm_sdk" },
+    { name = "llm-sdk", directory = "vendor_llm_sdk" },
     { name = "numpy", specifier = ">=2.4.4" },
     { name = "pydantic", specifier = ">=2.13.0" },
 ]
@@ -458,7 +458,7 @@ wheels = [
 [[package]]
 name = "llm-sdk"
 version = "0.1.0"
-source = { editable = "llm_sdk" }
+source = { directory = "vendor_llm_sdk" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "torch" },

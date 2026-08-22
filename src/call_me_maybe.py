@@ -1,5 +1,6 @@
 from __future__ import annotations
 import argparse
+from decimal import Decimal, InvalidOperation
 import json
 import sys
 from pathlib import Path
@@ -7,7 +8,7 @@ from pydantic import ValidationError
 
 
 import numpy as np
-from llm_sdk.llm_sdk import Small_LLM_Model, logging
+from llm_sdk import Small_LLM_Model, logging
 
 from src.JSONStateMachine import JSONStateMachine
 from src.functions_manager import FunctionsDefinition
@@ -30,7 +31,11 @@ def build_prompt(functions_def: FunctionsDefinition, prompt: str) -> str:
         str: The complete prompt to send to the model,
         including instructions, function definitions, and the user prompt.
     """
-    new_prompt = "You are a assistant that helps with function calls.\n\n"
+    new_prompt = (
+        "Select exactly one of the available functions whose name and "
+        "description best match the user request. Extract a value for every "
+        "required parameter according to its declared type.\n\n"
+    )
     new_prompt += functions_def.get_functions_prompt()
     new_prompt += "Now, answer the following question:\n"
     new_prompt += prompt
@@ -177,13 +182,66 @@ def load_prompts(input_path: str | None) -> list[str]:
     raise ValueError(f"JSON must be string, dict, or list: {input_path}")
 
 
+def validate_grounded_parameters(functions_def: FunctionsDefinition,
+                                 prompt: str,
+                                 function_name: str,
+                                 parameters: dict[str, object]) -> None:
+    """Reject typed values that were invented instead of extracted.
+
+    Function selection remains an LLM decision. This validation only checks
+    that generated number and boolean arguments have explicit source values in
+    the user prompt.
+
+    Args:
+        functions_def: Definitions loaded from the supplied JSON file.
+        prompt: Original user request.
+        function_name: Function selected by the LLM.
+        parameters: Validated generated parameter values.
+
+    Raises:
+        ValueError: If a number or boolean value is absent from the prompt.
+    """
+    schema = functions_def.get_function_parameters_by_name(function_name)
+    available_numbers = utils.extract_numbers(prompt)
+    prompt_words = prompt.lower().split()
+    available_booleans = [
+        value == "true"
+        for value in prompt_words
+        if value in {"true", "false"}
+    ]
+
+    for parameter_name, parameter_schema in schema.items():
+        value = parameters[parameter_name]
+        if parameter_schema.type == "number":
+            try:
+                number = Decimal(str(value))
+            except InvalidOperation as exc:
+                raise ValueError(
+                    f"Parameter {parameter_name!r} is not a valid number"
+                ) from exc
+            if number not in available_numbers:
+                raise ValueError(
+                    f"Numeric parameter {parameter_name!r}={value!r} "
+                    "was not found in the user prompt"
+                )
+            available_numbers.remove(number)
+        elif parameter_schema.type == "boolean":
+            boolean = bool(value)
+            if boolean not in available_booleans:
+                raise ValueError(
+                    f"Boolean parameter {parameter_name!r}={value!r} "
+                    "was not found in the user prompt"
+                )
+            available_booleans.remove(boolean)
+
+
 def generate_response(functions_def: FunctionsDefinition,
                       input_prompt: str,
                       llm: tuple[
                           Small_LLM_Model,
                           dict[str, int]
                           ] | None = None,
-                      max_res_tokens: int = 110) -> str:
+                      max_res_tokens: int = 512) -> str:
     """Generate a response based on the model,the functions definition,
     and the user prompt.
 
@@ -220,9 +278,12 @@ def generate_response(functions_def: FunctionsDefinition,
             allowed_tokens = fsm.get_allowed_tokens()
             if not allowed_tokens or fsm.state == JSONState.END:
                 break
-            new_token_id = next_token_selection(llm[0],
-                                                tokens_ids,
-                                                allowed_tokens)
+            if len(allowed_tokens) == 1:
+                new_token_id = next(iter(allowed_tokens))
+            else:
+                new_token_id = next_token_selection(llm[0],
+                                                    tokens_ids,
+                                                    allowed_tokens)
             keep_token = fsm.update(new_token_id)
             if keep_token:
                 tokens_ids.append(new_token_id)
@@ -233,7 +294,6 @@ def generate_response(functions_def: FunctionsDefinition,
                         llm[0],
                         response_tokens_ids,
                         fsm.param_repeat_pattern)
-
     return cast(str, llm[0].decode(response_tokens_ids))
 
 
@@ -269,7 +329,6 @@ def run_cli(functions_definition_path: str,
     print("Loading model...")
     llm = load_model()
     print("Model loaded.")
-
     results: list[dict[str, str]] = []
     start_time = timeit.default_timer()
     for prompt in prompts:
@@ -277,19 +336,30 @@ def run_cli(functions_definition_path: str,
         try:
             response_dict = json.loads(response)
         except json.JSONDecodeError as exc:
-            print(f"Warning: Generated response is not valid JSON: {exc}",
-                  file=__import__("sys").stderr)
-            results.append({"prompt": prompt,
-                            "error": "Invalid generated JSON"})
-            continue
+            raise ValueError(
+                "Constrained generation produced invalid JSON for "
+                f"prompt {prompt!r}: {exc}"
+            ) from exc
 
-        OutputModel = functions_def.get_output_function_model(
-            response_dict['name'])
         try:
-            OutputModel.model_validate(response_dict)
-        except ValidationError as e:
-            print(e)
-        results.append(response_dict)
+            function_name = response_dict["name"]
+            OutputModel = functions_def.get_output_function_model(
+                function_name
+            )
+            validated_response = OutputModel.model_validate(response_dict)
+            validated_dict = validated_response.model_dump()
+            validate_grounded_parameters(
+                functions_def,
+                prompt,
+                function_name,
+                validated_dict["parameters"],
+            )
+        except (KeyError, ValueError, ValidationError) as exc:
+            raise ValueError(
+                "Generated response does not match a supplied function "
+                f"schema for prompt {prompt!r}: {exc}"
+            ) from exc
+        results.append(validated_dict)
 
     end_time = timeit.default_timer()
     minutes = (end_time - start_time) / 60
@@ -299,10 +369,12 @@ def run_cli(functions_definition_path: str,
     print(message)
 
     if output_path is not None:
-        Path(output_path).write_text(json.dumps(results,
-                                                indent=2,
-                                                ensure_ascii=False
-                                                ), encoding="utf-8")
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_text(json.dumps(results,
+                                          indent=2,
+                                          ensure_ascii=False
+                                          ), encoding="utf-8")
     elif len(results) == 1:
         print(results[0])
     else:
@@ -321,18 +393,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--input",
         dest="input_path",
+        # default="data/input/function_calling_tests.json",
         default=None,
         help="Path to the list of prompts JSON file.",
     )
     parser.add_argument(
         "--output",
         dest="output_path",
+        # default="data/output/function_calling_results.json",
         default=None,
         help="Path where the generated responses should be written.",
     )
     args = parser.parse_args(argv)
 
-    run_cli(args.functions_definition, args.input_path, args.output_path)
+    try:
+        run_cli(args.functions_definition, args.input_path, args.output_path)
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
