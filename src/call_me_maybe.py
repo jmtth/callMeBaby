@@ -357,7 +357,7 @@ def run_cli(functions_definition_path: str,
         except (KeyError, ValueError, ValidationError) as exc:
             raise ValueError(
                 "Generated response does not match a supplied function "
-                f"schema for prompt {prompt!r}: {exc}"
+                f"schema for prompt {prompt!r}:\n{exc}"
             ) from exc
         results.append(validated_dict)
 

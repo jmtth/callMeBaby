@@ -1,4 +1,6 @@
 from src import utils
+from llm_sdk import Small_LLM_Model
+from typing import cast
 
 
 class FakeModel:
@@ -27,7 +29,7 @@ def test_get_repeating_pattern():
 
 def test_remove_repeating_pattern():
     """Test the remove_repeating_pattern function with various inputs."""
-    model = FakeModel()
+    model = cast(Small_LLM_Model, FakeModel())
     response = [ord(c) for c in "catcatcat"]
     pattern = "cat"
     new_response = utils.remove_repeating_pattern(model, response, pattern)
@@ -51,7 +53,7 @@ def test_remove_repeating_pattern():
 
 def test_remove_repeating_pattern_empty_pattern():
     """Test the remove_repeating_pattern function with an empty pattern."""
-    model = FakeModel()
+    model = cast(Small_LLM_Model, FakeModel())
     response = [ord(c) for c in "catcat"]
     new_response = utils.remove_repeating_pattern(model, response, "")
     assert new_response == response

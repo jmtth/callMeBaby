@@ -1,5 +1,8 @@
 from src.JSONStateMachine import JSONStateMachine
+from llm_sdk import Small_LLM_Model
+from src.functions_manager import FunctionsDefinition
 from src.models import JSONState
+from typing import cast
 
 
 class DummyFunctionsDef:
@@ -18,6 +21,14 @@ class StringParamFunctionsDef:
 
     def get_function_parameters_by_name(self, name: str):
         return {"text": DummyParam("string")}
+
+
+class NotParamFunctionsDef:
+    def list_functions_name(self):
+        return ["fn_not_good"]
+
+    def get_function_parameters_by_name(self, name: str):
+        return None
 
 
 class NumberParamFunctionsDef:
@@ -42,10 +53,73 @@ class EmptyParamFunctionsDef:
 class FakeModel:
     def encode(self, s: str):
         # return a list-like structure where [0] is a list of ints
+        # This simulates the behavior of a model that returns Ids
+        # ord() is used to convert characters to their ASCII integer
         return [[ord(c) for c in s]]
 
     def decode(self, ids: list[int]) -> str:
         return ''.join(chr(i) for i in ids)
+
+
+class TensorLikeEncoding:
+    """Minimal tensor-like value exposing the branch used by _norm_encode."""
+
+    def __init__(self, values: list[int]):
+        self.values = values
+
+    def tolist(self):
+        return self.values
+
+
+class TensorLikeModel():
+    def encode(self, s: str):
+        return [TensorLikeEncoding([ord(c) for c in s])]
+
+
+def test_norm_encode_converts_tensor_like_encoding_to_list():
+    """Tensor and NumPy-like encodings are normalized to lists of ints."""
+    model = TensorLikeModel()
+    funcs = DummyFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id)
+
+    assert sm.targets[JSONState.START] == [ord("{")]
+    assert isinstance(sm.targets[JSONState.START], list)
+    assert all(isinstance(token_id, int)
+               for token_id in sm.targets[JSONState.START])
+
+
+def test_get_all_token_ids_removes_duplicate_ids():
+    """Return every vocabulary ID once, even when values are duplicated."""
+    model = FakeModel()
+    funcs = DummyFunctionsDef()
+    token_to_id = {"first": 10, "second": 20, "alias": 10}
+
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id)
+
+    assert sm._get_all_token_ids() == {10, 20}
+
+
+def test_get_adjusted_param_index():
+    """Test that the adjusted parameter index is computed correctly."""
+    model = FakeModel()
+    funcs = DummyFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id)
+
+    sm.current_param_nb = 2
+    sm.state = JSONState.PARAM_VAL
+    assert sm._get_adjusted_param_index() == 1
+    sm.current_param_nb = 0
+    assert sm._get_adjusted_param_index() == 0
 
 
 def test_extract_decimal_counts():
@@ -56,10 +130,156 @@ def test_extract_decimal_counts():
 
     # prompt with integer, float with 3 decimals, float with 1 decimal
     prompt = "Value A: 12, Value B: 3.456, Value C: -7.0"
-    sm = JSONStateMachine(model, funcs, token_to_id, prompt=prompt)
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id, prompt=prompt)
 
     # Expect: 12 -> 1 decimal, 3.456 -> 3, -7.0 -> 1
     assert sm.prompt_decimal_counts == [1, 3, 1]
+
+
+def test_get_not_found_current_function_parameters():
+    """Test that the current function parameters are retrieved correctly."""
+    model = FakeModel()
+    funcs = StringParamFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id)
+
+    sm.current_function_name = "fn_not_good"
+    params = sm._get_current_function_params()
+    params_type = sm._get_current_param_type()
+    assert params is None
+    assert params_type is None
+
+
+def test_get_found_current_function_without_parameters():
+    """Test that the current function parameters are retrieved correctly."""
+    model = FakeModel()
+    funcs = NotParamFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id)
+
+    sm.current_function_name = "fn_not_good"
+    params = sm._get_current_function_params()
+    params_type = sm._get_current_param_type()
+
+    assert params is None
+    assert params_type is None
+
+
+def test_get_current_param_type_returns_none_for_out_of_range_index():
+    """An adjusted index outside the parameter list has no parameter type."""
+    model = FakeModel()
+    funcs = StringParamFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id)
+    sm.current_function_name = "fn_echo"
+    sm.state = JSONState.PARAM_VAL
+    sm.current_param_nb = 2
+
+    assert sm._get_adjusted_param_index() == 1
+    assert sm._get_current_param_type() is None
+
+
+def test_get_not_found_current_function_param_name():
+    """Test that the current function parameter name is retrieved correctly."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(model, funcs, token_to_id)
+
+    sm.current_function_name = "fn_not_good"
+    param_name = sm._get_current_param_name()
+    assert param_name is None
+    sm.current_function_name = "fn_echo"
+    sm.current_param_nb = 2
+    param_name = sm._get_current_param_name()
+    assert param_name is None
+
+
+def test_get_not_found_current_function_param_index():
+    """Test that the current function parameter index
+    is retrieved correctly."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(model, funcs, token_to_id)
+
+    sm.current_function_name = "fn_not_good"
+    param_index = sm._get_current_param_index()
+    assert param_index is None
+    sm.current_function_name = "fn_echo"
+    sm.current_param_nb = -1
+    param_index = sm._get_current_param_index()
+    assert param_index is None
+
+
+def test_get_not_found_current_function_target_decimals():
+    """Test that the current function target decimals are
+    retrieved correctly."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, NumberParamFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(model, funcs, token_to_id)
+
+    sm.current_function_name = "fn_not_good"
+    target_decimals = sm._get_target_decimals_for_current_param()
+    assert target_decimals is None
+    sm.current_function_name = "fn_add"
+    sm.current_param_nb = 2
+    target_decimals = sm._get_target_decimals_for_current_param()
+    assert target_decimals is None
+
+
+def test_is_in_fixed_sequence_state():
+    """Test that the state machine correctly identifies
+    fixed sequence states."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, DummyFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(model, funcs, token_to_id)
+
+    # Fixed sequence states
+    fixed_states = [
+        JSONState.START,
+        JSONState.PROMPT_KEY,
+        JSONState.NAME_KEY,
+        JSONState.PARAMS_KEY,
+        JSONState.EMPTY_PARAMS,
+        JSONState.PROMPT_VAL,
+        JSONState.PARAM_COLON,
+        JSONState.PARAM_COMMA,
+        JSONState.END
+    ]
+
+    for state in fixed_states:
+        sm.state = state
+        assert sm.is_in_fixed_sequence() is True
+
+    # Non-fixed sequence states
+    non_fixed_states = [
+
+        JSONState.NAME_VAL,
+        JSONState.PARAM_NAME,
+        JSONState.PARAM_VAL
+    ]
+
+    for state in non_fixed_states:
+        sm.state = state
+        assert sm.is_in_fixed_sequence() is False
 
 
 def test_prompt_target_escapes_quotes_for_json_string():
@@ -71,7 +291,9 @@ def test_prompt_target_escapes_quotes_for_json_string():
     token_to_id = {chr(i): i for i in range(32, 128)}
 
     prompt = 'Replace "Hello 34 I\'m 233 years old" '
-    sm = JSONStateMachine(model, funcs, token_to_id, prompt=prompt)
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id, prompt=prompt)
 
     encoded_prompt = sm.targets[JSONState.PROMPT_VAL]
     decoded_prompt = model.decode(encoded_prompt)
@@ -87,7 +309,9 @@ def test_allowed_tokens_for_string_value_uses_actual_token_ids():
     funcs = StringParamFunctionsDef()
     token_to_id = {"x": 10, '"': 42, "y": 99}
 
-    sm = JSONStateMachine(model, funcs, token_to_id, prompt="")
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id, prompt="")
     sm.state = JSONState.PARAM_VAL
     sm.current_function_name = "fn_echo"
     sm.current_param_nb = 0
@@ -112,7 +336,9 @@ def test_number_value_allows_only_terminators_after_precision_is_met():
     funcs = NumberParamFunctionsDef()
     token_to_id = {"1": 11, "2": 22, ",": 33, " ": 44, "}": 55, ".": 66}
 
-    sm = JSONStateMachine(model, funcs, token_to_id, prompt="3.45")
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id, prompt="3.45")
     sm.state = JSONState.PARAM_VAL
     sm.current_function_name = "fn_add"
     sm.current_param_nb = 0
@@ -127,7 +353,9 @@ def test_empty_parameter_function_generates_complete_json_suffix():
     model = FakeModel()
     funcs = EmptyParamFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
-    sm = JSONStateMachine(model, funcs, token_to_id, prompt="nonsense")
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id, prompt="nonsense")
 
     sm.state = JSONState.NAME_VAL
     for char in "fn_ping":
