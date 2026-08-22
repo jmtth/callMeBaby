@@ -39,6 +39,22 @@ class NumberParamFunctionsDef:
         return {"value": DummyParam("number")}
 
 
+class BooleanParamFunctionsDef:
+    def list_functions_name(self):
+        return ["fn_toggle"]
+
+    def get_function_parameters_by_name(self, name: str):
+        return {"enabled": DummyParam("boolean")}
+
+
+class UnsupportedParamFunctionsDef:
+    def list_functions_name(self):
+        return ["fn_collect"]
+
+    def get_function_parameters_by_name(self, name: str):
+        return {"items": DummyParam("array")}
+
+
 class EmptyParamFunctionsDef:
     def list_functions_name(self):
         return ["fn_ping"]
@@ -280,6 +296,111 @@ def test_is_in_fixed_sequence_state():
     for state in non_fixed_states:
         sm.state = state
         assert sm.is_in_fixed_sequence() is False
+
+
+def test_get_allowed_tokens_returns_next_token_of_fixed_sequence():
+    """A fixed sequence allows only the token at the current progress."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, DummyFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.START
+    sm.progress = 0
+
+    assert sm.get_allowed_tokens() == {ord("{")}
+
+
+def test_get_allowed_tokens_for_function_name_state():
+    """The function-name state allows the next token of a valid name."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.NAME_VAL
+    sm.current_text = ""
+
+    assert sm.get_allowed_tokens() == {ord("f")}
+
+
+def test_get_allowed_tokens_for_parameter_name_state():
+    """The parameter-name state allows the next token of its parameter."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.PARAM_NAME
+    sm.current_function_name = "fn_echo"
+    sm.current_param_nb = 0
+    sm.current_text = ""
+
+    assert sm.get_allowed_tokens() == {ord("t")}
+
+
+def test_get_allowed_tokens_falls_back_to_all_vocabulary_ids():
+    """A state without a specific constraint allows all vocabulary IDs."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, DummyFunctionsDef())
+    token_to_id = {"first": 10, "second": 20, "alias": 10}
+
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.STOP
+
+    assert sm.get_allowed_tokens() == {10, 20}
+
+
+def test_allowed_tokens_for_boolean_parameter():
+    """A boolean parameter allows only the literal true and false tokens."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, BooleanParamFunctionsDef())
+    token_to_id = {
+        "true": 10,
+        "false": 20,
+        "null": 30,
+        "yes": 40,
+    }
+
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.PARAM_VAL
+    sm.current_function_name = "fn_toggle"
+    sm.current_param_nb = 0
+
+    assert sm.get_allowed_tokens() == {10, 20}
+
+
+def test_allowed_tokens_for_unsupported_parameter_type_is_empty():
+    """An unsupported parameter type has no allowed token."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, UnsupportedParamFunctionsDef())
+    token_to_id = {"[": 10, "]": 20}
+
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.PARAM_VAL
+    sm.current_function_name = "fn_collect"
+    sm.current_param_nb = 0
+
+    assert sm.get_allowed_tokens() == set()
+
+
+def test_allowed_tokens_for_repeat_pattern():
+    """A detected repetition forces the string's closing quote."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
+    token_to_id = {"a": 10, "b": 20, "c": 30, "\"": 40}
+
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.PARAM_VAL
+    sm.current_function_name = "fn_echo"
+    sm.current_param_nb = 0
+    sm.current_text = "abcabc"
+    sm.param_repeat_pattern = "abc"
+
+    allowed_tokens = sm.get_allowed_tokens()
+
+    assert allowed_tokens == {40}
+    assert sm.param_repeat_pattern == ""
 
 
 def test_prompt_target_escapes_quotes_for_json_string():
