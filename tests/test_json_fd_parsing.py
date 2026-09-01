@@ -32,8 +32,8 @@ def test_main_runs_without_error():
 
     assert called["args"] == (
         "data/input/functions_definition.json",
-        None,
-        None,
+        "data/input/function_calling_tests.json",
+        "data/output/function_calling_results.json",
     )
 
 

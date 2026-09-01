@@ -63,6 +63,29 @@ make debug
 make clean
 ```
 
+## Generation Visualizer
+
+Open the interactive Textual dashboard with:
+
+```bash
+make visualize
+```
+
+Custom input and output paths remain available:
+
+```bash
+uv run python -m src --visualize \
+  --functions_definition path/to/functions_definition.json \
+  --input path/to/prompts.json \
+  --output path/to/function_calling_results.json
+```
+
+The dashboard follows each response in real time. It displays the current FSM
+state, the JSON under construction, the generated-token count, deterministic
+structure insertions, and the twelve highest-logit tokens that remain valid
+under the active constraint. Generation runs in a background worker so the
+interface remains responsive. Press `q` to quit or `c` to clear the event log.
+
 ## Algorithm
 
 The generation pipeline works as follows:
@@ -217,6 +240,7 @@ Expected output shape:
 
 AI was used as a review and learning aid to explain constrained-decoding state
 transitions, identify schema and token-stopping bugs, and suggest unit-test cases.
+AI was used for regex and vizualisation dashboard.
 Every proposed change was inspected and validated locally with pytest, flake8,
 and mypy.
 

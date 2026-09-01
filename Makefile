@@ -10,6 +10,7 @@ help:
 	@echo "  clean        Clean up temporary files"
 	@echo "  lint         Lint the project"
 	@echo "  lint-strict  Strict linting of the project"
+	@echo "  visualize    Open the token generation dashboard"
 
 install:
 	@echo "Installing CallMeBaby..."
@@ -19,6 +20,10 @@ run:
 	@echo "Running CallMeBaby..."
 	uv run python -m src --functions_definition data/input/functions_definition.json --input data/input/function_calling_tests.json
 # 	uv run python main.py
+
+visualize:
+	@echo "Opening the token generation dashboard..."
+	uv run python -m src --visualize
 
 test:
 	@echo "Running tests for CallMeBaby..."
@@ -54,4 +59,4 @@ unset-local:
 	unset HF_HUB_OFFLINE
 	unset TRANSFORMERS_OFFLINE
 
-.PHONY: install run debug clean lint lint-strict local unset-local
+.PHONY: install run visualize debug clean lint lint-strict local unset-local

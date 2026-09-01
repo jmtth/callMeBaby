@@ -26,6 +26,33 @@ class GenerationLimitError(ValueError):
     """Raised when a complete constrained response exceeds its token budget."""
 
 
+@dataclass(frozen=True)
+class TokenCandidate:
+    """One allowed token considered during a model decision."""
+
+    token_id: int
+    text: str
+    logit: float
+
+
+@dataclass(frozen=True)
+class GenerationStep:
+    """Read-only snapshot emitted after one generation decision."""
+
+    index: int
+    state: str
+    kind: str
+    selected_id: int | None
+    selected_text: str
+    generated_text: str
+    response_tokens: int
+    allowed_count: int
+    candidates: tuple[TokenCandidate, ...] = ()
+
+
+GenerationObserver = Callable[[GenerationStep], None]
+
+
 @dataclass
 class GenerationBuffer:
     """Own the only generated-token list and enforce its exact budget."""
@@ -80,6 +107,36 @@ def select_next_token(
     return int(indices[best_index])
 
 
+def rank_allowed_tokens(
+    model: GeneratorModel,
+    current_ids: list[int],
+    allowed_ids: set[int],
+    vocabulary: TokenVocabulary,
+    limit: int = 20,
+) -> tuple[int, tuple[TokenCandidate, ...]]:
+    """Select the best allowed token and retain a compact ranked snapshot."""
+    if not allowed_ids:
+        raise ValueError("No allowed tokens available for selection")
+    logits = np.asarray(model.get_logits_from_input_ids(current_ids))
+    indices = np.fromiter(allowed_ids, dtype=int)
+    if np.any(indices < 0) or np.any(indices >= logits.size):
+        raise ValueError("Allowed token ID is outside the model vocabulary")
+    ranked_ids = sorted(
+        (int(token_id) for token_id in indices),
+        key=lambda token_id: float(logits[token_id]),
+        reverse=True,
+    )[:limit]
+    candidates = tuple(
+        TokenCandidate(
+            token_id=token_id,
+            text=vocabulary.text(token_id),
+            logit=float(logits[token_id]),
+        )
+        for token_id in ranked_ids
+    )
+    return ranked_ids[0], candidates
+
+
 def generate_constrained_response(
     model: GeneratorModel,
     token_to_id: dict[str, int],
@@ -89,6 +146,7 @@ def generate_constrained_response(
     max_res_tokens: int,
     *,
     vocabulary: TokenVocabulary | None = None,
+    observer: GenerationObserver | None = None,
     token_selector: Callable[
         [GeneratorModel, list[int], set[int]], int
     ] = select_next_token,
@@ -119,6 +177,7 @@ def generate_constrained_response(
                 f"{max_generation_steps} state-machine steps"
             )
         if fsm.is_in_fixed_sequence():
+            state_name = fsm.state.name
             target_ids = fsm.get_target_tokens_for_current_state()
             if not target_ids:
                 fsm.complete_empty_fixed_sequence()
@@ -126,6 +185,17 @@ def generate_constrained_response(
             buffer.append(target_ids)
             for token_id in target_ids:
                 fsm.update(token_id)
+            if observer is not None:
+                observer(GenerationStep(
+                    index=generation_steps,
+                    state=state_name,
+                    kind="fixed",
+                    selected_id=None,
+                    selected_text=model.decode(target_ids),
+                    generated_text=model.decode(buffer.response_ids),
+                    response_tokens=len(buffer.response_ids),
+                    allowed_count=len(target_ids),
+                ))
             continue
 
         allowed_ids = fsm.get_allowed_tokens()
@@ -134,16 +204,40 @@ def generate_constrained_response(
                 f"No token allowed while generating state {fsm.state.name}"
             )
 
+        state_name = fsm.state.name
+        candidates: tuple[TokenCandidate, ...] = ()
         if len(allowed_ids) == 1:
             token_id = next(iter(allowed_ids))
+            kind = "deterministic"
+        elif observer is not None and token_selector is select_next_token:
+            token_id, candidates = rank_allowed_tokens(
+                model,
+                buffer.context_ids,
+                allowed_ids,
+                vocabulary,
+            )
+            kind = "model"
         else:
             token_id = token_selector(
                 model,
                 buffer.context_ids,
                 allowed_ids,
             )
+            kind = "model"
 
         if fsm.update(token_id):
             buffer.append(token_id)
+        if observer is not None:
+            observer(GenerationStep(
+                index=generation_steps,
+                state=state_name,
+                kind=kind,
+                selected_id=token_id,
+                selected_text=vocabulary.text(token_id),
+                generated_text=model.decode(buffer.response_ids),
+                response_tokens=len(buffer.response_ids),
+                allowed_count=len(allowed_ids),
+                candidates=candidates,
+            ))
 
     return model.decode(buffer.response_ids)

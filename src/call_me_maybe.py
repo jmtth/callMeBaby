@@ -11,7 +11,11 @@ from llm_sdk import Small_LLM_Model, logging
 
 from src.JSONStateMachine import JSONStateMachine
 from src.functions_manager import FunctionsDefinition
-from src.generator import generate_constrained_response, select_next_token
+from src.generator import (
+    GenerationObserver,
+    generate_constrained_response,
+    select_next_token,
+)
 from src.grounding import collect_prompt_values
 from src.token_vocabulary import TokenVocabulary
 import timeit
@@ -213,7 +217,8 @@ def generate_response(functions_def: FunctionsDefinition,
                           dict[str, int]
                           ] | None = None,
                       max_res_tokens: int = 512,
-                      vocabulary: TokenVocabulary | None = None) -> str:
+                      vocabulary: TokenVocabulary | None = None,
+                      observer: GenerationObserver | None = None) -> str:
     """Generate a response based on the model,the functions definition,
     and the user prompt.
 
@@ -238,15 +243,54 @@ def generate_response(functions_def: FunctionsDefinition,
         input_prompt,
         max_res_tokens,
         vocabulary=vocabulary,
+        observer=observer,
         token_selector=next_token_selection,
         fsm_factory=JSONStateMachine,
     )
 
 
+def validate_generated_response(
+    functions_def: FunctionsDefinition,
+    prompt: str,
+    response: str,
+) -> dict[str, object]:
+    """Parse and validate a response against its function schema."""
+    try:
+        response_dict = json.loads(response)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            "Constrained generation produced invalid JSON for "
+            f"prompt {prompt!r}: {exc}"
+        ) from exc
+
+    try:
+        function_name = response_dict["name"]
+        OutputModel = functions_def.get_output_function_model(
+            function_name
+        )
+        validated_response = OutputModel.model_validate(response_dict)
+        validated_dict: dict[str, object] = validated_response.model_dump()
+        parameters = validated_dict["parameters"]
+        if not isinstance(parameters, dict):
+            raise ValueError("Generated parameters must be an object")
+        validate_grounded_parameters(
+            functions_def,
+            prompt,
+            function_name,
+            parameters,
+        )
+        return validated_dict
+    except (KeyError, ValueError, ValidationError) as exc:
+        raise ValueError(
+            "Generated response does not match a supplied function "
+            f"schema for prompt {prompt!r}:\n{exc}"
+        ) from exc
+
+
 def run_cli(functions_definition_path: str,
             input_path: str | None = None,
             output_path: str | None = None
-            ) -> list[dict[str, str]]:
+            ) -> list[dict[str, object]]:
     """Run CLI function calling pipeline with error handling.
 
     Args:
@@ -276,7 +320,7 @@ def run_cli(functions_definition_path: str,
     llm = load_model()
     print("Model loaded.")
     vocabulary = TokenVocabulary(llm[0], llm[1])
-    results: list[dict[str, str]] = []
+    results: list[dict[str, object]] = []
     start_time = timeit.default_timer()
     for prompt in prompts:
         response = generate_response(
@@ -285,32 +329,11 @@ def run_cli(functions_definition_path: str,
             llm=llm,
             vocabulary=vocabulary,
         )
-        try:
-            response_dict = json.loads(response)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                "Constrained generation produced invalid JSON for "
-                f"prompt {prompt!r}: {exc}"
-            ) from exc
-
-        try:
-            function_name = response_dict["name"]
-            OutputModel = functions_def.get_output_function_model(
-                function_name
-            )
-            validated_response = OutputModel.model_validate(response_dict)
-            validated_dict = validated_response.model_dump()
-            validate_grounded_parameters(
-                functions_def,
-                prompt,
-                function_name,
-                validated_dict["parameters"],
-            )
-        except (KeyError, ValueError, ValidationError) as exc:
-            raise ValueError(
-                "Generated response does not match a supplied function "
-                f"schema for prompt {prompt!r}:\n{exc}"
-            ) from exc
+        validated_dict = validate_generated_response(
+            functions_def,
+            prompt,
+            response,
+        )
         results.append(validated_dict)
 
     end_time = timeit.default_timer()
@@ -356,10 +379,28 @@ def main(argv: list[str] | None = None) -> int:
         # default=None,
         help="Path where the generated responses should be written.",
     )
+    parser.add_argument(
+        "--visualize",
+        action="store_true",
+        help="Open the Textual constrained-generation visualizer.",
+    )
     args = parser.parse_args(argv)
 
     try:
-        run_cli(args.functions_definition, args.input_path, args.output_path)
+        if args.visualize:
+            from src.visualizer import run_visualizer
+
+            run_visualizer(
+                args.functions_definition,
+                args.input_path,
+                args.output_path,
+            )
+        else:
+            run_cli(
+                args.functions_definition,
+                args.input_path,
+                args.output_path,
+            )
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

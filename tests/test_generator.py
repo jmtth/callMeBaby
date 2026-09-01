@@ -7,7 +7,11 @@ from src.functions_manager import (
     FunctionsDefinition,
     Parameter,
 )
-from src.generator import GenerationLimitError, generate_constrained_response
+from src.generator import (
+    GenerationLimitError,
+    GenerationStep,
+    generate_constrained_response,
+)
 from src.models import JSONState
 
 
@@ -51,6 +55,38 @@ def test_complete_boolean_generation_pipeline():
         "name": "toggle",
         "parameters": {"enabled": True},
     }
+
+
+def test_generation_observer_receives_decisions_and_final_json():
+    model = CharacterModel()
+    token_to_id = {chr(token_id): token_id for token_id in range(32, 128)}
+    functions = FunctionsDefinition([
+        FunctionSchema(
+            name="toggle",
+            parameters={"enabled": Parameter(type="boolean")},
+        )
+    ])
+    events: list[GenerationStep] = []
+
+    response = generate_constrained_response(
+        model,
+        token_to_id,
+        functions,
+        prompt="Select a function",
+        input_prompt="Set enabled to true",
+        max_res_tokens=128,
+        observer=events.append,
+    )
+
+    assert events
+    assert events[-1].generated_text == response
+    assert {event.kind for event in events} >= {"fixed", "model"}
+    model_events = [event for event in events if event.kind == "model"]
+    assert model_events
+    assert model_events[0].candidates
+    assert model_events[0].candidates[0].token_id == (
+        model_events[0].selected_id
+    )
 
 
 def test_generation_stops_when_selected_function_lacks_prompt_values():
