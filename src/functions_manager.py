@@ -84,15 +84,18 @@ class FunctionsDefinition:
             raise ValueError(f"Invalid function definition in: {exc}") from exc
 
     def list_functions_name(self) -> list[str]:
+        """Return a list of function names in the order they were defined."""
         return [func.name for func in self.functions]
 
     def get_function_by_name(self, name: str) -> FunctionSchema:
+        """Return the function definition for the given name."""
         try:
             return self._functions_by_name[name]
         except KeyError as exc:
             raise ValueError(f"Function with name '{name}' not found") from exc
 
     def get_function_description_by_name(self, name: str) -> str:
+        """Return the function description for the given name."""
         func = self.get_function_by_name(name)
         return func.description
 
@@ -100,10 +103,14 @@ class FunctionsDefinition:
         self,
         name: str,
     ) -> dict[str, Parameter]:
+        """Return the function parameters for the given name."""
         func = self.get_function_by_name(name)
         return func.parameters
 
     def get_nb_parameters(self, name: str) -> int:
+        """Return the number of parameters for the function
+        with the given name.
+        """
         params = self.get_function_parameters_by_name(name)
         return len(params)
 
@@ -122,6 +129,13 @@ class FunctionsDefinition:
         return prompt
 
     def get_output_function_model(self, name: str) -> type[BaseModel]:
+        """Return a Pydantic model for the output of the function
+        with the given name.
+        The model will have the following fields:
+        - prompt: str
+        - name: Literal[func.name]
+        - parameters: ParamsModel
+        """
         func = self.get_function_by_name(name)
         params_fields: dict[str, Any] = {
             param_name: (TYPE_MAPPING[param.type], ...)

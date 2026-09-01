@@ -20,11 +20,12 @@ class JSONStateMachine:
                  vocabulary: TokenVocabulary | None = None):
         """State machine to track the generation of a JSON function call.
 
-        Attributes:
+        Args:
             model: The language model instance.
-            state: The current state of the state machine.
-            current_text: The current text being generated.
-            current_function_name: The name of the function being called.
+            functions_def: The functions definition.
+            token_to_id: A mapping from tokens to their IDs.
+            prompt: The user prompt.
+            vocabulary: The token vocabulary.
         """
         self.model = model
         self.state = JSONState.START
@@ -102,6 +103,7 @@ class JSONStateMachine:
         return params
 
     def _get_current_param_type(self) -> str | None:
+        """Get the type of the current parameter, or None if invalid."""
         params = self._get_current_function_params()
         if params is None:
             return None
@@ -114,6 +116,7 @@ class JSONStateMachine:
         return values[idx].type
 
     def _get_current_param_name(self) -> str | None:
+        """Get the name of the current parameter, or None if invalid."""
         params = self._get_current_function_params()
         if params is None:
             return None
@@ -125,6 +128,7 @@ class JSONStateMachine:
         return values[idx]
 
     def _get_current_param_index(self) -> int | None:
+        """Get the index of the current parameter, or None if invalid."""
         if self.current_function_name not in self.functions_names:
             return None
 
@@ -134,6 +138,9 @@ class JSONStateMachine:
         return idx
 
     def _get_target_decimals_for_current_param(self) -> int | None:
+        """Get the target number of decimal places for the current parameter,
+        or None if not applicable.
+        """
         idx = self._get_current_param_index()
         if idx is None:
             return None
@@ -183,6 +190,7 @@ class JSONStateMachine:
         return self._get_all_token_ids()
 
     def _allowed_tokens_for_parameter_name(self) -> set[int]:
+        """Get the allowed token ids for the current parameter name."""
         allowed_tokens: set[int] = set()
         params = self._get_current_function_params()
         if params is not None:
@@ -198,6 +206,7 @@ class JSONStateMachine:
         return allowed_tokens
 
     def _allowed_tokens_for_parameter_value(self) -> set[int]:
+        """Get the allowed token ids for the current parameter value."""
         allowed_tokens: set[int] = set()
         param_type = self._get_current_param_type()
 
@@ -220,6 +229,7 @@ class JSONStateMachine:
         return allowed_tokens
 
     def _allowed_tokens_for_param_string(self) -> set[int]:
+        """Get the allowed token ids for the current string parameter value."""
         quote_ids = self.vocabulary.exact_ids('"')
 
         if not self.current_text:
@@ -257,17 +267,30 @@ class JSONStateMachine:
         return safe_tokens
 
     def _allowed_tokens_for_grounded_string(self, value: str) -> set[int]:
-        """Allow only token fragments that continue one extracted value."""
+        """Allow only token fragments that continue one extracted value.
+        args:
+            value: the grounded string value to continue.
+        returns:
+            set[int]: the allowed token ids for the grounded string value.
+        """
         generated = self.current_text[1:]
         return self._get_allowed_tokens_for_string(value, generated)
 
     def _is_safe_string_continuation(self, token_id: int) -> bool:
+        """Check if adding the token to the current string is safe.
+        args:
+            token_id: the token id to check.
+        returns:
+            bool: True if the token can be added to the current string,
+            False otherwise.
+        """
         candidate = self.current_text + self.vocabulary.text(token_id)
         if len(candidate) > MAX_STRING_LENGTH:
             return False
         return not utils.get_repeating_pattern(candidate)
 
     def _allowed_tokens_for_param_number(self) -> set[int]:
+        """Get the allowed token ids for the current number parameter value."""
         text = self.current_text
         has_dot = "." in text
         frac_len = len(text.split(".", 1)[1]) if has_dot else 0
@@ -325,6 +348,7 @@ class JSONStateMachine:
         return digit_tokens
 
     def _allowed_tokens_for_function_name(self) -> set[int]:
+        """Get the allowed token ids for the current function name."""
         allowed_tokens: set[int] = set()
         still_possible = [
             s for s in self.functions_names
@@ -346,6 +370,7 @@ class JSONStateMachine:
         return allowed_tokens
 
     def _allowed_tokens_for_replacement(self) -> set[int]:
+        """Get the allowed token ids for the 'replacement' parameter value."""
         allowed_tokens: set[int] = set()
         generated = self.current_text[1:]  # Skip the opening quote.
         still_possible = [
@@ -367,6 +392,13 @@ class JSONStateMachine:
         target_string: str,
         current_generated_text: str,
     ) -> set[int]:
+        """Get the allowed token ids for a string value.
+        args:
+            target_string: the string value to continue.
+            current_generated_text: the string value generated so far.
+        returns:
+            set[int]: the allowed token ids for the string value.
+        """
         return self.vocabulary.ids_continuing(
             target_string,
             current_generated_text,

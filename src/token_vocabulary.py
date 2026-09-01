@@ -29,6 +29,9 @@ class TokenVocabulary:
 
     Token IDs are the canonical representation inside the generation pipeline.
     Text is decoded here, once per ID, only when a constraint needs it.
+    args:
+        model: a TokenDecoder instance to decode token IDs.
+        token_to_id: a dictionary mapping token strings to their IDs.
     """
 
     def __init__(
@@ -105,6 +108,13 @@ class TokenVocabulary:
 
     @staticmethod
     def _is_safe_json_string_fragment(token_text: str) -> bool:
+        """Check if a token can be added to a JSON string without escaping.
+        args:
+            token_text: the text of the token to check.
+        returns:
+            bool: True if the token can be added to a JSON string
+            without escaping, False otherwise.
+        """
         if not token_text or '"' in token_text or "\\" in token_text:
             return False
         escaped = json.dumps(token_text, ensure_ascii=False)[1:-1]
