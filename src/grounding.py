@@ -16,9 +16,15 @@ BOOLEAN_PATTERN = re.compile(r"\b(true|false)\b", re.IGNORECASE)
 def infer_string_parameters(prompt: str) -> dict[str, str]:
     """Extract unambiguous string arguments from common request phrasing.
 
-    The returned keys are semantic parameter names.  An empty mapping means
+    The returned keys are semantic parameter names. An empty mapping means
     that the prompt was not recognized and constrained generation should fall
     back to the language model.
+
+    Args:
+        prompt: User request to match against supported unambiguous forms.
+
+    Returns:
+        Extracted values keyed by semantic parameter name, or an empty mapping.
     """
     substitute = re.fullmatch(
         r"\s*substitute(?:\s+the\s+word)?\s+(['\"])(.*?)\1\s+with\s+"
@@ -101,7 +107,16 @@ def validate_prompt_capacity(
     prompt: str,
     function_name: str,
 ) -> None:
-    """Reject a selected function lacking enough typed source literals."""
+    """Ensure a prompt contains enough typed literals for a selected function.
+
+    Args:
+        functions_def: Available function definitions.
+        prompt: Original user request containing source values.
+        function_name: Function selected during constrained generation.
+
+    Raises:
+        ValueError: If the prompt lacks required number or boolean literals.
+    """
     parameters = functions_def.get_function_parameters_by_name(function_name)
     required_numbers = sum(
         parameter.type == "number" for parameter in parameters.values()

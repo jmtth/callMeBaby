@@ -10,6 +10,7 @@ from src.functions_manager import FunctionSchema, Parameter
 
 
 def test_build_prompt_includes_functions():
+    """Build prompt includes functions."""
     fakeFunctionsDefinition = MagicMock()
     fakeFunctionsDefinition.get_functions_prompt.return_value = (
         "Here are the available functions:\n\n"
@@ -27,7 +28,7 @@ def test_build_prompt_includes_functions():
 
 
 def test_build_token_to_id_shapeA():
-    """Test the build_token_to_id function with a sample vocab."""
+    """Build token to id shapea."""
 
     vocab_shape = {"0": "hello", "1": "world", "2": "Ġhello", "3": "Ġworld"}
     token_to_id = cmm.build_token_to_id(vocab_shape)
@@ -35,7 +36,7 @@ def test_build_token_to_id_shapeA():
 
 
 def test_build_token_to_id_shapeB():
-    """Test the build_token_to_id function with a sample vocab."""
+    """Build token to id shapeb."""
 
     vocab_shape = {"hello": 0, "world": 1, "Ġhello": 2, "Ġworld": 3}
     token_to_id = cmm.build_token_to_id(vocab_shape)
@@ -43,33 +44,32 @@ def test_build_token_to_id_shapeB():
 
 
 def test_build_token_to_id_raises_on_empty():
-    """Empty vocab should raise ValueError."""
+    """Build token to id raises on empty."""
     with pytest.raises(ValueError,
                        match="Vocabulary is empty, cannot build token_to_id"):
         cmm.build_token_to_id({})
 
 
 def test_build_token_to_id_raises_on_bad_keys():
-    """Non-convertible keys should raise ValueError."""
+    """Build token to id raises on bad keys."""
     with pytest.raises(ValueError, match="Unsupported vocab format"):
         cmm.build_token_to_id({"hello": None, "world": None})
 
 
 def test_build_token_to_id_raises_on_bad_values():
-    """Non-convertible values should raise ValueError."""
+    """Build token to id raises on bad values."""
     with pytest.raises(ValueError, match="Unsupported vocab format"):
         cmm.build_token_to_id({"0": None, "1": None})
 
 
 def test_build_token_to_id_raises_on_unicode_digits():
-    """Unicode digits like ² pass isdigit() but fail int()."""
+    """Build token to id raises on unicode digits."""
     with pytest.raises(ValueError, match="invalid literal for int()"):
         cmm.build_token_to_id({"²": "hello", "³": "world"})
 
 
 def test_next_token_selection():
-    """Test that the next token selection logic
-    correctly handles end of sequence."""
+    """Next token selection."""
     fake_model = MagicMock()
     fake_model.get_logits_from_input_ids.return_value = [0.1, 0.2, 0.3, 0.4]
     fake_allowed_ids = {2, 3}
@@ -80,8 +80,7 @@ def test_next_token_selection():
 
 
 def test_next_token_selection_no_allowed_tokens():
-    """Test that the next token selection logic
-    correctly handles no allowed tokens."""
+    """Next token selection no allowed tokens."""
     fake_model = MagicMock()
     fake_model.get_logits_from_input_ids.return_value = [0.1, 0.2, 0.3, 0.4]
     fake_allowed_ids = set()
@@ -93,6 +92,7 @@ def test_next_token_selection_no_allowed_tokens():
 
 
 def test_generation_buffer_enforces_an_atomic_token_budget():
+    """Generation buffer enforces an atomic token budget."""
     buffer = GenerationBuffer(prompt_ids=[1, 2], max_response_tokens=2)
     buffer.append([3, 4])
 
@@ -104,6 +104,7 @@ def test_generation_buffer_enforces_an_atomic_token_budget():
 
 
 def test_grounded_numeric_parameters_accept_prompt_values():
+    """Grounded numeric parameters accept prompt values."""
     functions_def = cmm.FunctionsDefinition.from_json(
         "tests/data/valid_functions_definition.json"
     )
@@ -117,6 +118,7 @@ def test_grounded_numeric_parameters_accept_prompt_values():
 
 
 def test_grounded_numeric_parameters_reject_invented_value():
+    """Grounded numeric parameters reject invented value."""
     functions_def = cmm.FunctionsDefinition.from_json(
         "tests/data/valid_functions_definition.json"
     )
@@ -131,6 +133,7 @@ def test_grounded_numeric_parameters_reject_invented_value():
 
 
 def test_grounded_boolean_detects_literal_before_punctuation():
+    """Grounded boolean detects literal before punctuation."""
     functions_def = cmm.FunctionsDefinition([
         FunctionSchema(
             name="toggle",
@@ -149,8 +152,7 @@ def test_grounded_boolean_detects_literal_before_punctuation():
 
 @patch("src.call_me_maybe.Small_LLM_Model")
 def test_load_model(mock_model_class):
-    """Test that the load_model function returns an object
-    with the expected methods."""
+    """Load model."""
     mock_model = MagicMock()
     mock_model.get_path_to_vocab_file.return_value = "/fake/vocab.json"
     mock_model_class.return_value = mock_model
@@ -170,7 +172,7 @@ def test_load_model(mock_model_class):
 @patch("src.call_me_maybe.Small_LLM_Model")
 @patch("platform.system")
 def test_load_model_linux(mock_system, mock_model_class):
-    """Test load_model on Linux uses cpu device."""
+    """Load model linux."""
     # Simulate Linux
     mock_system.return_value = "Linux"
 
@@ -192,7 +194,7 @@ def test_load_model_linux(mock_system, mock_model_class):
 @patch("src.call_me_maybe.Small_LLM_Model")
 @patch("platform.system")
 def test_load_model_mac(mock_system, mock_model_class):
-    """Test load_model on Mac uses mps device."""
+    """Load model mac."""
     # Simulate Mac
     mock_system.return_value = "Darwin"
 
@@ -211,7 +213,7 @@ def test_load_model_mac(mock_system, mock_model_class):
 @patch("src.call_me_maybe.Small_LLM_Model")
 @patch("platform.system")
 def test_load_model_fallback(mock_system, mock_model_class):
-    """Test that model-loading errors are reported without a traceback."""
+    """Load model fallback."""
     mock_system.return_value = "Linux"
     mock_model_class.side_effect = Exception("No local files")
 
@@ -223,7 +225,7 @@ def test_load_model_fallback(mock_system, mock_model_class):
 
 
 def make_fake_llm():
-    """Helper qui crée un faux llm tuple (model, token_to_id)"""
+    """Return a fake model and token-to-ID mapping."""
     fake_model = MagicMock()
 
     # encode(prompt)[0].tolist() -> [1, 2, 3]
@@ -239,11 +241,7 @@ def make_fake_llm():
 
 
 def make_fake_fsm(states: list):
-    """Helper qui crée un faux JSONStateMachine
-
-    Args:
-        states: liste de JSONState que fsm.state retournera successivement
-    """
+    """Return a configurable JSON state-machine test double."""
     fake_fsm = MagicMock()
     fake_fsm.is_in_fixed_sequence.return_value = False
     fake_fsm.get_allowed_tokens.return_value = {1, 2, 3}
@@ -259,7 +257,7 @@ def make_fake_fsm(states: list):
 
 @patch("src.call_me_maybe.JSONStateMachine")
 def test_generate_response_basic(mock_fsm_class):
-    """Test generate_response avec llm pré-chargé."""
+    """Generate response basic."""
     fake_llm = make_fake_llm()
     fake_functions_def = MagicMock()
     fake_functions_def.get_functions_prompt.return_value = "functions prompt"
@@ -281,7 +279,7 @@ def test_generate_response_basic(mock_fsm_class):
 
 @patch("src.call_me_maybe.JSONStateMachine")
 def test_generate_response_fixed_sequence(mock_fsm_class):
-    """Test la branche is_in_fixed_sequence."""
+    """Generate response fixed sequence."""
     fake_llm = make_fake_llm()
     fake_llm[0].decode.return_value = '{"name":'
     fake_functions_def = MagicMock()
@@ -292,6 +290,7 @@ def test_generate_response_fixed_sequence(mock_fsm_class):
     fake_fsm.get_target_tokens_for_current_state.return_value = [10, 11]
 
     def finish_after_target(token_id):
+        """Stop the fake state machine after its fixed target."""
         if token_id == 11:
             fake_fsm.state = JSONState.STOP
         return True
@@ -311,6 +310,7 @@ def test_generate_response_fixed_sequence(mock_fsm_class):
 
 @patch("src.call_me_maybe.JSONStateMachine")
 def test_generate_response_rejects_fixed_sequence_over_budget(mock_fsm_class):
+    """Generate response rejects fixed sequence over budget."""
     fake_llm = make_fake_llm()
     fake_functions_def = MagicMock()
     fake_fsm = MagicMock()
@@ -334,7 +334,7 @@ def test_generate_response_rejects_fixed_sequence_over_budget(mock_fsm_class):
 @patch("src.call_me_maybe.JSONStateMachine")
 def test_generate_response_forces_single_allowed_token(mock_fsm_class,
                                                        mock_next_token):
-    """A structural singleton does not require another LLM logits call."""
+    """Generate response forces single allowed token."""
     fake_llm = make_fake_llm()
     fake_functions_def = MagicMock()
 
@@ -344,6 +344,7 @@ def test_generate_response_forces_single_allowed_token(mock_fsm_class,
     fake_fsm.get_allowed_tokens.return_value = {2}
 
     def finish_generation(token_id):
+        """Stop the fake state machine after token selection."""
         fake_fsm.state = JSONState.STOP
         return True
 
@@ -360,7 +361,7 @@ def test_generate_response_forces_single_allowed_token(mock_fsm_class,
 @patch("src.call_me_maybe.JSONStateMachine")
 def test_generate_response_loads_model_if_none(mock_fsm_class,
                                                mock_load_model):
-    """Test que load_model est appelé si llm=None."""
+    """Generate response loads model if none."""
     fake_llm = make_fake_llm()
     mock_load_model.return_value = fake_llm
     fake_functions_def = MagicMock()
@@ -375,10 +376,12 @@ def test_generate_response_loads_model_if_none(mock_fsm_class,
 
 
 def test_infer_greet_name_from_prompt():
+    """Infer greet name from prompt."""
     assert infer_string_parameters("Greet shrek") == {"name": "shrek"}
 
 
 def test_infer_literal_substitution_parameters():
+    """Infer literal substitution parameters."""
     prompt = "Substitute the word 'cat' with 'dog' in 'The cat sat'"
 
     assert infer_string_parameters(prompt) == {
@@ -389,6 +392,7 @@ def test_infer_literal_substitution_parameters():
 
 
 def test_infer_number_regex_substitution_parameters():
+    """Infer number regex substitution parameters."""
     prompt = 'Replace all numbers in "Hello 34 and 233" with NUMBERS'
 
     assert infer_string_parameters(prompt) == {

@@ -27,13 +27,7 @@ def extract_numbers(string: str) -> list[Decimal]:
 
 
 def extract_decimal_counts(string: str) -> list[int]:
-    """Extract the number of decimal places for each number in a string.
-
-    For integers, count as 1 (to allow at least one decimal place if needed).
-    For floats, count the number of digits after the decimal point.
-    if the number has no decimal part, count as 1 to allow
-    for a decimal point and at least one digit after it.
-    """
+    """Return each numeric literal's decimal count, using one for integers."""
     counts = []
     for match in re.finditer(r"-?\d+(?:\.(\d+))?", string):
         frac = match.group(1)
@@ -42,17 +36,16 @@ def extract_decimal_counts(string: str) -> list[int]:
 
 
 def is_valid_number_fragment(text: str) -> bool:
-    """Check if the text is a valid fragment of a number.
+    """Return whether text can be a prefix of a supported number.
 
-    Valid fragments can be empty, contain digits, a single decimal point,
-    a single 'e' for scientific notation, and a '-' for negative numbers.
-    The '-' can only be at the start or immediately after an 'e'.
+    Supported fragments use digits, at most one decimal point, an optional
+    lowercase exponent, and minus signs only at the start or after ``e``.
 
-    args:
-        str: the string fragment of a number.
+    Args:
+        text: Candidate numeric prefix.
 
-    returns:
-        bool: true if it is a valid number fragment.
+    Returns:
+        Whether further characters could turn the prefix into a valid number.
     """
     if text == "":
         return True
@@ -89,22 +82,16 @@ def is_valid_number_fragment(text: str) -> bool:
 
 
 def is_complete_number(text: str) -> bool:
-    """Check if the text is a complete and valid number.
+    """Return whether text is a complete supported number.
 
-    A complete number can be an integer or a float,
-    and may include an optional leading '-' for negatives
-    and an optional 'e' for scientific notation.
-    It must have at least one digit, and if it has a decimal point,
-    it must have digits after it.
-    like "123", "123.45", "-123.45", "1e10", "-1e-10", "1.5e+10" are valid,
-    but "123.", "-123.", "1e", "1e-", "1e+", ".e10", "-.e10" are not valid.
+    Complete values require at least one digit and cannot end with a sign,
+    decimal point, or exponent marker.
 
-    args:
-        str: a number in string
+    Args:
+        text: Candidate numeric value.
 
-    returns:
-        bool: true if it is a valid number
-
+    Returns:
+        Whether the complete string represents a supported number.
     """
     if text == "":
         return False

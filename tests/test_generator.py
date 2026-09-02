@@ -16,21 +16,25 @@ from src.models import JSONState
 
 
 class CharacterModel:
-    """Deterministic tokenizer for pipeline integration tests."""
+    """Provide the CharacterModel test double."""
 
     def encode(self, text: str) -> list[list[int]]:
+        """Encode text into token IDs for the test double."""
         return [[ord(character) for character in text]]
 
     def decode(self, ids: list[int]) -> str:
+        """Decode token IDs into text for the test double."""
         return "".join(chr(token_id) for token_id in ids)
 
     def get_logits_from_input_ids(self, input_ids: list[int]) -> list[float]:
+        """Return deterministic logits for the test double."""
         logits = [0.0] * 128
         logits[ord("t")] = 1.0
         return logits
 
 
 def test_complete_boolean_generation_pipeline():
+    """Complete boolean generation pipeline."""
     model = CharacterModel()
     token_to_id = {chr(token_id): token_id for token_id in range(32, 128)}
     functions = FunctionsDefinition([
@@ -58,6 +62,7 @@ def test_complete_boolean_generation_pipeline():
 
 
 def test_generation_observer_receives_decisions_and_final_json():
+    """Generation observer receives decisions and final json."""
     model = CharacterModel()
     token_to_id = {chr(token_id): token_id for token_id in range(32, 128)}
     functions = FunctionsDefinition([
@@ -90,6 +95,7 @@ def test_generation_observer_receives_decisions_and_final_json():
 
 
 def test_generation_stops_when_selected_function_lacks_prompt_values():
+    """Generation stops when selected function lacks prompt values."""
     model = CharacterModel()
     token_to_id = {chr(token_id): token_id for token_id in range(32, 128)}
     functions = FunctionsDefinition([
@@ -117,22 +123,27 @@ def test_generation_stops_when_selected_function_lacks_prompt_values():
 
 
 class StuckStateMachine:
-    """FSM double that never consumes a token or changes state."""
+    """Provide the StuckStateMachine test double."""
 
     def __init__(self, *args, **kwargs):
+        """Initialize the test double."""
         self.state = JSONState.NAME_VAL
 
     def is_in_fixed_sequence(self) -> bool:
+        """Return whether the test double is in a fixed sequence."""
         return False
 
     def get_allowed_tokens(self) -> set[int]:
+        """Return token IDs allowed by the test double."""
         return {ord("a")}
 
     def update(self, token_id: int) -> bool:
+        """Record a token update in the test double."""
         return False
 
 
 def test_generation_has_a_step_guard_even_when_no_token_is_kept():
+    """Generation has a step guard even when no token is kept."""
     model = CharacterModel()
 
     with pytest.raises(GenerationLimitError, match="did not converge"):

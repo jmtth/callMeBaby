@@ -176,6 +176,7 @@ class GenerationVisualizer(App[None]):
         output_path: str | None,
         max_response_tokens: int = 512,
     ) -> None:
+        """Initialize the dashboard with input, output, and token settings."""
         super().__init__()
         self.functions_path = functions_path
         self.input_path = input_path
@@ -185,6 +186,7 @@ class GenerationVisualizer(App[None]):
         self._started_at = 0.0
 
     def compose(self) -> ComposeResult:
+        """Compose the dashboard widgets."""
         yield Header(show_clock=True)
         with Horizontal(id="workspace"):
             with Vertical(id="sidebar"):
@@ -228,6 +230,7 @@ class GenerationVisualizer(App[None]):
         yield Footer()
 
     def on_mount(self) -> None:
+        """Configure the candidate table and start generation."""
         table = self.query_one("#candidates", DataTable)
         table.add_column("", width=1)
         table.add_column("Token", width=19)
@@ -245,12 +248,15 @@ class GenerationVisualizer(App[None]):
         return rendered[:width - 1] + "…"
 
     def action_clear_timeline(self) -> None:
+        """Clear all entries from the generation timeline."""
         self.query_one("#timeline", RichLog).clear()
 
     def _set_status(self, message: str) -> None:
+        """Replace the prompt card contents with a status message."""
         self.query_one("#prompt-card", Static).update(message)
 
     def _populate_prompts(self, prompts: list[str]) -> None:
+        """Populate the sidebar with the prompts to process."""
         prompt_list = self.query_one("#prompt-list", ListView)
         for index, prompt in enumerate(prompts, start=1):
             label = Label(f"○ {index:02d}  {prompt}")
@@ -258,6 +264,7 @@ class GenerationVisualizer(App[None]):
             prompt_list.append(ListItem(label))
 
     def _start_prompt(self, index: int, prompt: str) -> None:
+        """Reset dashboard panels for a newly started prompt."""
         self._started_at = perf_counter()
         self.query_one("#prompt-list", ListView).index = index
         self._prompt_labels[index].update(f"▶ {index + 1:02d}  {prompt}")
@@ -275,6 +282,7 @@ class GenerationVisualizer(App[None]):
         )
 
     def _finish_prompt(self, index: int, prompt: str, response: str) -> None:
+        """Display a completed response and its elapsed generation time."""
         elapsed = perf_counter() - self._started_at
         self._prompt_labels[index].update(f"✓ {index + 1:02d}  {prompt}")
         try:
@@ -291,6 +299,7 @@ class GenerationVisualizer(App[None]):
         )
 
     def _fail(self, message: str) -> None:
+        """Display a generation failure in the status and timeline panels."""
         self.query_one("#prompt-card", Static).update(
             Text(message, style="bold #fb7185")
         )
@@ -299,6 +308,7 @@ class GenerationVisualizer(App[None]):
         )
 
     def _apply_step(self, event: GenerationStep) -> None:
+        """Render one generation decision across all dashboard panels."""
         kind_labels = {
             "model": "CHOIX LLM",
             "fixed": "STRUCTURE",
@@ -351,6 +361,7 @@ class GenerationVisualizer(App[None]):
 
     @work(thread=True, exclusive=True)
     def _generate_all(self) -> None:
+        """Generate, validate, and optionally persist every prompt result."""
         try:
             functions = FunctionsDefinition.from_json(self.functions_path)
             prompts = load_prompts(self.input_path)
@@ -364,6 +375,7 @@ class GenerationVisualizer(App[None]):
                 self.call_from_thread(self._start_prompt, index, prompt)
 
                 def observe(event: GenerationStep) -> None:
+                    """Forward a worker generation event to the UI thread."""
                     self.call_from_thread(self._apply_step, event)
 
                 response = generate_response(

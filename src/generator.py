@@ -68,6 +68,7 @@ class GenerationBuffer:
 
     @property
     def remaining(self) -> int:
+        """Return the number of response tokens still available."""
         return self.max_response_tokens - len(self.response_ids)
 
     def append(self, token_ids: int | Sequence[int]) -> None:
@@ -114,7 +115,21 @@ def rank_allowed_tokens(
     vocabulary: TokenVocabulary,
     limit: int = 20,
 ) -> tuple[int, tuple[TokenCandidate, ...]]:
-    """Select the best allowed token and retain a compact ranked snapshot."""
+    """Rank allowed tokens by model logit and select the best candidate.
+
+    Args:
+        model: Model providing next-token logits.
+        current_ids: Token IDs forming the current model context.
+        allowed_ids: Token IDs permitted by the state machine.
+        vocabulary: Vocabulary used to decode candidate IDs.
+        limit: Maximum number of ranked candidates to retain.
+
+    Returns:
+        The selected token ID and a descending snapshot of candidates.
+
+    Raises:
+        ValueError: If no tokens are allowed or an ID is outside the logits.
+    """
     if not allowed_ids:
         raise ValueError("No allowed tokens available for selection")
     logits = np.asarray(model.get_logits_from_input_ids(current_ids))
@@ -152,7 +167,30 @@ def generate_constrained_response(
     ] = select_next_token,
     fsm_factory: Callable[..., JSONStateMachine] = JSONStateMachine,
 ) -> str:
-    """Generate one schema-constrained JSON response."""
+    """Generate one JSON response under state-machine constraints.
+
+    The function maintains a single response buffer, emits fixed structural
+    sequences atomically, and delegates ambiguous choices to model logits.
+
+    Args:
+        model: Model used for encoding, decoding, and token logits.
+        token_to_id: Mapping from tokenizer spellings to token IDs.
+        functions_def: Function schemas that constrain the response.
+        prompt: Complete instruction prompt passed to the model.
+        input_prompt: Original user request used by grounding rules.
+        max_res_tokens: Maximum number of generated response tokens.
+        vocabulary: Optional reusable token-vocabulary cache.
+        observer: Optional callback receiving generation snapshots.
+        token_selector: Strategy used for ambiguous token choices.
+        fsm_factory: Factory used to construct the JSON state machine.
+
+    Returns:
+        The decoded schema-constrained JSON response.
+
+    Raises:
+        GenerationLimitError: If the token budget or step guard is exceeded.
+        ValueError: If generation reaches a state with no valid token.
+    """
     if max_res_tokens < 1:
         raise ValueError("max_res_tokens must be greater than zero")
 

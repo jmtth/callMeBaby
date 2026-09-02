@@ -12,20 +12,22 @@ MAX_STRING_LENGTH = 80
 
 
 class JSONStateMachine:
+    """Constrain token generation to a valid function-call JSON object."""
+
     def __init__(self,
                  model: TokenModel,
                  functions_def: FunctionsDefinition,
                  token_to_id: dict[str, int],
                  prompt: str = "",
                  vocabulary: TokenVocabulary | None = None):
-        """State machine to track the generation of a JSON function call.
+        """Initialize the state machine and pre-encode fixed JSON fragments.
 
         Args:
-            model: The language model instance.
-            functions_def: The functions definition.
-            token_to_id: A mapping from tokens to their IDs.
-            prompt: The user prompt.
-            vocabulary: The token vocabulary.
+            model: Model used to encode fixed fragments and decode tokens.
+            functions_def: Available function definitions.
+            token_to_id: Mapping from tokenizer spellings to token IDs.
+            prompt: Original user request used for value grounding.
+            vocabulary: Optional reusable token-vocabulary cache.
         """
         self.model = model
         self.state = JSONState.START
@@ -44,6 +46,7 @@ class JSONStateMachine:
 
         # Normalize encodings (support lists, numpy arrays, tensors)
         def _norm_encode(s: str) -> list[int]:
+            """Normalize one encoded string to a list of token IDs."""
             enc0 = model.encode(s)[0]
             if hasattr(enc0, "tolist"):
                 return [int(token_id) for token_id in cast(list[int],
@@ -73,6 +76,7 @@ class JSONStateMachine:
         self.prompt_decimal_counts = utils.extract_decimal_counts(prompt)
 
     def _get_all_token_ids(self) -> set[int]:
+        """Return every unique token ID in the vocabulary."""
         return set(self.vocabulary.all_ids)
 
     def _get_adjusted_param_index(self) -> int:
@@ -81,8 +85,8 @@ class JSONStateMachine:
         When in PARAM_VAL state (filling the parameter value), we need to look
         at the parameter we're currently filling, not the next one.
 
-        returns:
-            int : idx of the parameter
+        Returns:
+            The zero-based index of the parameter currently being processed.
         """
         idx = self.current_param_nb
         if self.state == JSONState.PARAM_VAL and idx > 0:
@@ -90,9 +94,7 @@ class JSONStateMachine:
         return idx
 
     def _get_current_function_params(self) -> dict | None:
-        """Get the parameters dict for the current function,
-        or None if invalid.
-        """
+        """Return current function parameters, or ``None`` if unavailable."""
         if self.current_function_name not in self.functions_names:
             return None
         params = self.functions.get_function_parameters_by_name(
@@ -138,9 +140,7 @@ class JSONStateMachine:
         return idx
 
     def _get_target_decimals_for_current_param(self) -> int | None:
-        """Get the target number of decimal places for the current parameter,
-        or None if not applicable.
-        """
+        """Return the prompt-derived decimal precision for the parameter."""
         idx = self._get_current_param_index()
         if idx is None:
             return None
@@ -149,7 +149,7 @@ class JSONStateMachine:
         return None
 
     def get_target_tokens_for_current_state(self) -> list[int]:
-        """"Get the target token ids for the current state."""
+        """Return unconsumed fixed token IDs for the current state."""
         target = self.targets.get(self.state, [])
         return target[self.progress:]
 
@@ -162,16 +162,14 @@ class JSONStateMachine:
         self.progress = 0
 
     def is_in_fixed_sequence(self) -> bool:
-        """Check if we are currently in a fixed sequence of tokens
-        (like the JSON structure or the prompt).
-        """
+        """Return whether the current state emits a fixed token sequence."""
         return self.state in self.targets
 
     def get_allowed_tokens(self) -> set[int]:
-        """Get the allowed token ids for the current state.
+        """Compute token IDs allowed by the current state and partial value.
 
         Returns:
-            set[int]: the allowed token ids for the current state.
+            Token IDs that may legally follow the generated prefix.
         """
         # 1. Sequence fixe (JSON)
         if self.state in self.targets:
@@ -267,23 +265,12 @@ class JSONStateMachine:
         return safe_tokens
 
     def _allowed_tokens_for_grounded_string(self, value: str) -> set[int]:
-        """Allow only token fragments that continue one extracted value.
-        args:
-            value: the grounded string value to continue.
-        returns:
-            set[int]: the allowed token ids for the grounded string value.
-        """
+        """Return token fragments that continue an extracted string value."""
         generated = self.current_text[1:]
         return self._get_allowed_tokens_for_string(value, generated)
 
     def _is_safe_string_continuation(self, token_id: int) -> bool:
-        """Check if adding the token to the current string is safe.
-        args:
-            token_id: the token id to check.
-        returns:
-            bool: True if the token can be added to the current string,
-            False otherwise.
-        """
+        """Return whether a token safely extends the current string value."""
         candidate = self.current_text + self.vocabulary.text(token_id)
         if len(candidate) > MAX_STRING_LENGTH:
             return False
@@ -392,30 +379,27 @@ class JSONStateMachine:
         target_string: str,
         current_generated_text: str,
     ) -> set[int]:
-        """Get the allowed token ids for a string value.
-        args:
-            target_string: the string value to continue.
-            current_generated_text: the string value generated so far.
-        returns:
-            set[int]: the allowed token ids for the string value.
-        """
+        """Return token IDs that continue a target string from its prefix."""
         return self.vocabulary.ids_continuing(
             target_string,
             current_generated_text,
         )
 
     def update(self, token_id: int) -> bool:
-        """Update the state machine with the new token.
+        """Consume one token and advance the state machine when appropriate.
 
-        Check if the token is valid in the current state,
-        update the state accordingly,
-        and return whether to keep the token or not.
+        Structural delimiters terminating numeric values advance the machine
+        but are not retained because the following fixed state emits them.
 
         Args:
-            token_id: the new token id to update the state machine with.
+            token_id: Token ID selected by constrained generation.
 
         Returns:
-            bool: whether to keep the token (True) or not (False)."""
+            Whether the caller should append the token to the response.
+
+        Raises:
+            ValueError: If a token violates a fixed sequence.
+        """
         token_text = self.vocabulary.text(token_id)
 
         if self.state == JSONState.NAME_VAL:
@@ -506,6 +490,7 @@ class JSONStateMachine:
         )
 
     def _update_state(self) -> None:
+        """Advance to the next structural JSON generation state."""
         if self.state == JSONState.START:
             self.state = JSONState.PROMPT_KEY
         elif self.state == JSONState.PROMPT_KEY:

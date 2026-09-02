@@ -36,10 +36,7 @@ bad_str_f_json_output = {
 
 
 def test_bad_json_f_str_output():
-    """Test that validating a JSON output
-    for a function with number parameters
-    fails for invalid inputs.
-    """
+    """Bad JSON f str output."""
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     OutputModel = functions_def.get_output_function_model("fn_add_numbers")
@@ -49,10 +46,7 @@ def test_bad_json_f_str_output():
 
 
 def test_good_json_f_str_output():
-    """Test that validating a JSON output
-    for a function with number parameters
-    succeeds for valid inputs.
-    """
+    """Good JSON f str output."""
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     OutputModel = functions_def.get_output_function_model("fn_add_numbers")
@@ -62,7 +56,7 @@ def test_good_json_f_str_output():
 
 
 def test_output_rejects_extra_keys():
-    """Generated objects must contain no keys outside the output schema."""
+    """Output rejects extra keys."""
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     OutputModel = functions_def.get_output_function_model("fn_add_numbers")
@@ -76,10 +70,7 @@ def test_output_rejects_extra_keys():
 
 
 def test_bad_json_str_f_output():
-    """Test that validating a JSON output
-    for a function with string parameters
-    fails for invalid inputs.
-    """
+    """Bad JSON str f output."""
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     OutputModel = functions_def.get_output_function_model("fn_greet")
@@ -89,10 +80,7 @@ def test_bad_json_str_f_output():
 
 
 def test_good_json_str_f_output():
-    """Test that validating a JSON output
-    for a function with string parameters
-    succeeds for valid inputs.
-    """
+    """Good JSON str f output."""
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     OutputModel = functions_def.get_output_function_model("fn_greet")

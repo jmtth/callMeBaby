@@ -244,60 +244,58 @@ AI was used for regex and vizualisation dashboard.
 Every proposed change was inspected and validated locally with pytest, flake8,
 and mypy.
 
-## Technicals informations
+## Technical learnings
 
-### create project
+### Create project
 
 ```bash
-uv init <projet_name>
-#or if the directory exist
+uv init <project_name>
+# or if the directory exists
 uv init --bare
 
 unzip data.zip
 unzip llm_sdk.zip
 
-#add workspace in root pyproject.toml
+# add workspace in root pyproject.toml
 [tool.uv.workspace]
 members = ["llm_sdk"]
 
-# add dependecies
+# add dependencies
 uv add --editable ./llm_sdk
 
-# add mandatory package 
+# add mandatory packages
 uv add numpy json mypy flake8
 
-# synchronise 
+# synchronize
 uv sync
-
 ```
 
-### Qualite du code
-- **pep 8**
-  very useful for clean code, easy to read, scale and maintain
-  > syntqx rules like :
-  >  - space indentation
-  >  - indentation for '}', ']', ')' multiple lines
-  >  - max line length
-  >  - new line rules:
-  >    - before or after an operator
-  >  - import rule
-  >  - etc...
+### Code quality
+- **PEP 8**
+  Very useful for clean code, easy to read, scalable, and maintainable
+  > Syntax rules like:
+  > - space indentation
+  > - indentation for '}', ']', ')' on multiple lines
+  > - maximum line length
+  > - newline rules:
+  >   - before or after an operator
+  > - import rules
+  > - etc...
 
   https://www.flake8rules.com/
   https://peps.python.org/pep-0008/
 
+- **PEP 257**
+  Code documentation rules for adding docstrings to classes and functions
+  > - Every module and public method must have a docstring
+  > - Docstrings must start with `"""` and end with `"""`.
+  > - Sentences explain what the functions do
+  > - Multi-line docstrings start with `"""` followed on the same line by the function description and must end with a newline and `"""`
 
-- **pep 257**
-  Code documetation, rule for adding Docstring for classes and functions
-  > - Every module, public methods must have Docstring
-  > - les Docstrings must start with `"""` and finish with `"""`.
-  > - Sentences explains what functions do
-  > - Multi line Docstrings start with `"""` followed on the same line by the description of the function and must finish with new line and `"""`
+  It is possible to improve this standard by adding args, returns, and errors.
+  > For this, I chose the Google style.
 
-  It is possible to upgrade this norm by adding args, return, and error.
-  > For this i choose the Google style.
-
-  exemple :
+  Example:
   ```python
   """Fetches rows from a Smalltable.
 
@@ -329,18 +327,41 @@ uv sync
     """
   ```
 
-
   https://peps.python.org/pep-0257/
 
 ### Library choice
-- Numpy
-  - Gain de performance sur la gestion des tableaux
-    > - cela est tres pertinent pour manipuler les logits
-    > - plusieurs milliers de tokens ici 151936
+- NumPy
+  - Performance gain in array handling
+    > - this is particularly relevant for manipulating logits
+    > - there are several thousand tokens here, 151936
     > - logits.index(max(logits)) -> int(np.argmax(logits))
-  - Gestion simplifié des mask
+  - Simplified mask management
     > - mask = np.full_like(logits_np, float("-inf"))
   - Fancy indexing
-    > - Evite boucle for avec de nombreuse comparaison
+    > - Avoids for loops with many comparisons
     > - indices = list(allowed_ids)
     > - mask[indices] = logits_np[indices]
+
+- Pydantic
+  - Validation of input and output data
+  - Dynamic generation of Pydantic models for functions and parameters
+  - Handling of complex types (lists, dictionaries, etc.)
+  - Management of default values and validation constraints
+  - Automatic generation of model documentation
+
+-Protocol
+  - Protocols are a way to define interfaces in Python
+  - They allow for structural subtyping, meaning that a class can be considered
+    a subtype of a protocol if it has the required methods and attributes,
+    regardless of its inheritance hierarchy.
+  - This is useful for defining expected behavior without enforcing a strict
+    inheritance structure.
+
+-Annotations
+  - Type annotations provide a way to specify the expected types of variables,
+    function parameters, and return values.
+  - They help with static type checking, code readability, and documentation.
+  - Annotations can be used with tools like mypy to catch type errors before
+    runtime.
+
+

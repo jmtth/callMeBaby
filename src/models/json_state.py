@@ -2,6 +2,7 @@ from enum import Enum, auto
 
 
 class JSONState(Enum):
+    """Represent each state of constrained JSON generation."""
     START = auto()          # {
     PROMPT_KEY = auto()     # "prompt": "
     PROMPT_VAL = auto()     # [Valeur du prompt]

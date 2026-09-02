@@ -1,18 +1,15 @@
 def get_repeating_pattern(text: str,
                           min_len: int = 3,
                           max_repeats: int = 2) -> str:
-    """Check if the text has a repeating pattern of 'cat' at the end.
+    """Find a suffix repeated enough times to indicate looping generation.
 
-    It is best not to research patterns shorter 3 characters,
-    and that a pattern must be repeated at least 3 time.
+    Args:
+        text: Text whose suffix should be inspected.
+        min_len: Minimum repeated-pattern length.
+        max_repeats: Number of occurrences required for a match.
 
-    args:
-        text (str): the input text to check for repeating patterns.
-        min_len (int): the minimum length of the pattern to check for.
-        max_repeats (int): the maximum number of repeats.
-
-    returns:
-        str: the repeating pattern if found, otherwise an empty string.
+    Returns:
+        The repeated suffix, or an empty string when none is found.
     """
     if len(text) < min_len * 2:
         return ""

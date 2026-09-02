@@ -2,7 +2,7 @@ from src import utils
 
 
 def test_is_number_terminator_token():
-    """Test the is_number_terminator_token function with various inputs."""
+    """Is number terminator token."""
     assert utils.is_number_terminator_token(" ") is True
     assert utils.is_number_terminator_token("  ") is True
     assert utils.is_number_terminator_token(",") is True

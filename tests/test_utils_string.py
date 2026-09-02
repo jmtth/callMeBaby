@@ -2,7 +2,7 @@ from src import utils
 
 
 def test_get_repeating_pattern():
-    """Test the get_repeating_pattern function with various inputs."""
+    """Get repeating pattern."""
     assert utils.get_repeating_pattern(
         "catcatcat", min_len=3, max_repeats=3) == "cat"
     assert utils.get_repeating_pattern(

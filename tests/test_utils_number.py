@@ -3,7 +3,7 @@ from decimal import Decimal
 
 
 def test_extract_decimal_counts():
-    """Test the extract_decimal_counts function with various inputs."""
+    """Extract decimal counts."""
     assert utils.extract_decimal_counts("123.45") == [2]
     assert utils.extract_decimal_counts("123.45 123.3") == [2, 1]
     assert utils.extract_decimal_counts("0.001") == [3]
@@ -20,6 +20,7 @@ def test_extract_decimal_counts():
 
 
 def test_extract_numbers_preserves_numeric_values():
+    """Extract numbers preserves numeric values."""
     assert utils.extract_numbers("Use 34, -2.5 and 1e3") == [
         Decimal("34"),
         Decimal("-2.5"),
@@ -28,7 +29,7 @@ def test_extract_numbers_preserves_numeric_values():
 
 
 def test_is_valid_number_fragment():
-    """Test the is_valid_number_fragment function with various inputs."""
+    """Is valid number fragment."""
     assert utils.is_valid_number_fragment("") is True
     assert utils.is_valid_number_fragment("123") is True
     assert utils.is_valid_number_fragment("-123") is True
@@ -55,7 +56,7 @@ def test_is_valid_number_fragment():
 
 
 def test_is_complete_number():
-    """Test the is_complete_number function with various inputs."""
+    """Is complete number."""
     assert utils.is_complete_number("123") is True
     assert utils.is_complete_number("123.45") is True
     assert utils.is_complete_number("-123.45") is True

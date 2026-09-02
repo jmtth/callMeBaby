@@ -21,12 +21,12 @@ TYPE_MAPPING: dict[ParameterType, type] = {
 
 
 class Parameter(BaseModel):
-    """Class representing a function parameter."""
+    """Describe one function parameter."""
     type: ParameterType = Field(..., description="Type of the parameter")
 
 
 class FunctionSchema(BaseModel):
-    """Class representing a function schema."""
+    """Describe a callable function and its parameters."""
     name: str = Field(..., description="Name of the function")
     description: str = Field("", description="Description of the function")
     parameters: dict[str, Parameter] = Field(
@@ -36,26 +36,10 @@ class FunctionSchema(BaseModel):
 
 
 class FunctionsDefinition:
-    """Class to load and query
-    function definitions from a JSON file.
-    Args:
-        path_to_json(str): JSON file path
-
-    Returns:
-        list[str]: list of function names
-        FunctionSchema: function definition by name
-        str: function description by name
-        dict: function parameters by name
-        int: function parameters count by name
-
-    Raise:
-        ValueError: if function name not found
-        ValueError: if JSON file is missing or malformed
-        ValueError: if unexpected error occurs
-        ValueError: if function definition is invalid
-    """
+    """Store validated function definitions and provide schema lookups."""
 
     def __init__(self, functions: list[FunctionSchema]):
+        """Index validated function definitions by their unique names."""
         names = [function.name for function in functions]
         if len(names) != len(set(names)):
             raise ValueError("Function names must be unique")
@@ -66,8 +50,17 @@ class FunctionsDefinition:
 
     @classmethod
     def from_json(cls, path_to_json: str) -> "FunctionsDefinition":
-        """Load function definitions from a JSON file
-        and return an instance of FunctionsDefinition.
+        """Load and validate function definitions from a JSON file.
+
+        Args:
+            path_to_json: Path to a JSON array of function definitions.
+
+        Returns:
+            The parsed and indexed function definitions.
+
+        Raises:
+            ValueError: If the file is missing, malformed, or contains invalid
+                function definitions.
         """
         try:
             raw_text = Path(path_to_json).read_text(encoding="utf-8")
@@ -108,16 +101,12 @@ class FunctionsDefinition:
         return func.parameters
 
     def get_nb_parameters(self, name: str) -> int:
-        """Return the number of parameters for the function
-        with the given name.
-        """
+        """Return the number of parameters declared by a function."""
         params = self.get_function_parameters_by_name(name)
         return len(params)
 
     def get_functions_prompt(self) -> str:
-        """Return a string representation of all functions
-        in a format suitable for prompting.
-        """
+        """Format all function definitions for inclusion in a model prompt."""
         prompt = "Here are the available functions:\n\n"
         for func in self.functions:
             prompt += f" - Function Name: {func.name}\n"
@@ -129,12 +118,17 @@ class FunctionsDefinition:
         return prompt
 
     def get_output_function_model(self, name: str) -> type[BaseModel]:
-        """Return a Pydantic model for the output of the function
-        with the given name.
-        The model will have the following fields:
-        - prompt: str
-        - name: Literal[func.name]
-        - parameters: ParamsModel
+        """Build a strict Pydantic output model for a selected function.
+
+        Args:
+            name: Name of the function whose output schema is required.
+
+        Returns:
+            A model containing ``prompt``, the literal function ``name``, and
+            a strict nested ``parameters`` model.
+
+        Raises:
+            ValueError: If no function with ``name`` exists.
         """
         func = self.get_function_by_name(name)
         params_fields: dict[str, Any] = {

@@ -7,7 +7,7 @@ from src.visualizer import GenerationVisualizer
 
 
 def test_visualizer_renders_generation_step(monkeypatch):
-    """Exercise the dashboard headlessly without loading the real model."""
+    """Visualizer renders generation step."""
     monkeypatch.setattr(
         GenerationVisualizer,
         "_generate_all",
@@ -16,6 +16,7 @@ def test_visualizer_renders_generation_step(monkeypatch):
     app = GenerationVisualizer("functions.json", "prompts.json", None)
 
     async def exercise() -> None:
+        """Exercise token preview rendering at the requested width."""
         async with app.run_test() as pilot:
             app._populate_prompts(["Toggle the feature"])
             app._start_prompt(0, "Toggle the feature")
@@ -47,6 +48,7 @@ def test_visualizer_renders_generation_step(monkeypatch):
 
 
 def test_token_preview_never_exceeds_candidate_column():
+    """Token preview never exceeds candidate column."""
     preview = GenerationVisualizer._token_preview("x" * 100)
 
     assert len(preview) == 14

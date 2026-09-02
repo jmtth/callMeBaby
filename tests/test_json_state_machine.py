@@ -6,97 +6,129 @@ from typing import cast
 
 
 class DummyFunctionsDef:
+    """Provide the DummyFunctionsDef test double."""
     def list_functions_name(self):
+        """Return function names exposed by the test double."""
         return []
 
 
 class DummyParam:
+    """Provide the DummyParam test double."""
     def __init__(self, type_: str):
+        """Initialize the test double."""
         self.type = type_
 
 
 class StringParamFunctionsDef:
+    """Provide the StringParamFunctionsDef test double."""
     def list_functions_name(self):
+        """Return function names exposed by the test double."""
         return ["fn_echo"]
 
     def get_function_parameters_by_name(self, name: str):
+        """Return parameters exposed by the test double."""
         return {"text": DummyParam("string")}
 
 
 class NotParamFunctionsDef:
+    """Provide the NotParamFunctionsDef test double."""
     def list_functions_name(self):
+        """Return function names exposed by the test double."""
         return ["fn_not_good"]
 
     def get_function_parameters_by_name(self, name: str):
+        """Return parameters exposed by the test double."""
         return None
 
 
 class NumberParamFunctionsDef:
+    """Provide the NumberParamFunctionsDef test double."""
     def list_functions_name(self):
+        """Return function names exposed by the test double."""
         return ["fn_add"]
 
     def get_function_parameters_by_name(self, name: str):
+        """Return parameters exposed by the test double."""
         return {"value": DummyParam("number")}
 
 
 class BooleanParamFunctionsDef:
+    """Provide the BooleanParamFunctionsDef test double."""
     def list_functions_name(self):
+        """Return function names exposed by the test double."""
         return ["fn_toggle"]
 
     def get_function_parameters_by_name(self, name: str):
+        """Return parameters exposed by the test double."""
         return {"enabled": DummyParam("boolean")}
 
 
 class UnsupportedParamFunctionsDef:
+    """Provide the UnsupportedParamFunctionsDef test double."""
     def list_functions_name(self):
+        """Return function names exposed by the test double."""
         return ["fn_collect"]
 
     def get_function_parameters_by_name(self, name: str):
+        """Return parameters exposed by the test double."""
         return {"items": DummyParam("array")}
 
 
 class EmptyParamFunctionsDef:
+    """Provide the EmptyParamFunctionsDef test double."""
     def list_functions_name(self):
+        """Return function names exposed by the test double."""
         return ["fn_ping"]
 
     def get_function_parameters_by_name(self, name: str):
+        """Return parameters exposed by the test double."""
         return {}
 
     def get_nb_parameters(self, name: str):
+        """Return the test function parameter count."""
         return 0
 
 
 class PrefixFunctionsDef:
+    """Provide the PrefixFunctionsDef test double."""
     def list_functions_name(self):
+        """Return function names exposed by the test double."""
         return ["get", "get_weather"]
 
     def get_function_parameters_by_name(self, name: str):
+        """Return parameters exposed by the test double."""
         return {}
 
     def get_nb_parameters(self, name: str):
+        """Return the test function parameter count."""
         return 0
 
 
 class FakeModel:
+    """Provide the FakeModel test double."""
     def encode(self, s: str):
         # return a list-like structure where [0] is a list of ints
         # This simulates the behavior of a model that returns Ids
         # ord() is used to convert characters to their ASCII integer
+        """Encode text into token IDs for the test double."""
         return [[ord(c) for c in s]]
 
     def decode(self, ids: list[int]) -> str:
+        """Decode token IDs into text for the test double."""
         return ''.join(chr(i) for i in ids)
 
 
 class MappedFakeModel(FakeModel):
-    """Fake model whose non-ASCII token IDs decode from a supplied vocab."""
+    """Provide the MappedFakeModel test double."""
 
     def __init__(self, token_to_id: dict[str, int]):
+        """Initialize the test double."""
         self.id_to_token = {
             token_id: token for token, token_id in token_to_id.items()
         }
 
     def decode(self, ids: list[int]) -> str:
+        """Decode token IDs into text for the test double."""
         return ''.join(
             self.id_to_token.get(token_id, chr(token_id))
             for token_id in ids
@@ -104,22 +136,26 @@ class MappedFakeModel(FakeModel):
 
 
 class TensorLikeEncoding:
-    """Minimal tensor-like value exposing the branch used by _norm_encode."""
+    """Provide the TensorLikeEncoding test double."""
 
     def __init__(self, values: list[int]):
+        """Initialize the test double."""
         self.values = values
 
     def tolist(self):
+        """Return the wrapped values as a list."""
         return self.values
 
 
 class TensorLikeModel():
+    """Provide the TensorLikeModel test double."""
     def encode(self, s: str):
+        """Encode text into token IDs for the test double."""
         return [TensorLikeEncoding([ord(c) for c in s])]
 
 
 def test_norm_encode_converts_tensor_like_encoding_to_list():
-    """Tensor and NumPy-like encodings are normalized to lists of ints."""
+    """Norm encode converts tensor like encoding to list."""
     model = TensorLikeModel()
     funcs = DummyFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -135,7 +171,7 @@ def test_norm_encode_converts_tensor_like_encoding_to_list():
 
 
 def test_get_all_token_ids_removes_duplicate_ids():
-    """Return every vocabulary ID once, even when values are duplicated."""
+    """Get all token ids removes duplicate ids."""
     model = FakeModel()
     funcs = DummyFunctionsDef()
     token_to_id = {"first": 10, "second": 20, "alias": 10}
@@ -148,7 +184,7 @@ def test_get_all_token_ids_removes_duplicate_ids():
 
 
 def test_get_adjusted_param_index():
-    """Test that the adjusted parameter index is computed correctly."""
+    """Get adjusted param index."""
     model = FakeModel()
     funcs = DummyFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -165,7 +201,7 @@ def test_get_adjusted_param_index():
 
 
 def test_extract_decimal_counts():
-    """Test prompt_decimal_count method with a simple prompt"""
+    """Extract decimal counts."""
     model = FakeModel()
     funcs = DummyFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -181,7 +217,7 @@ def test_extract_decimal_counts():
 
 
 def test_get_not_found_current_function_parameters():
-    """Test that the current function parameters are retrieved correctly."""
+    """Get not found current function parameters."""
     model = FakeModel()
     funcs = StringParamFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -198,7 +234,7 @@ def test_get_not_found_current_function_parameters():
 
 
 def test_get_found_current_function_without_parameters():
-    """Test that the current function parameters are retrieved correctly."""
+    """Get found current function without parameters."""
     model = FakeModel()
     funcs = NotParamFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -216,7 +252,7 @@ def test_get_found_current_function_without_parameters():
 
 
 def test_get_current_param_type_returns_none_for_out_of_range_index():
-    """An adjusted index outside the parameter list has no parameter type."""
+    """Get current param type returns none for out of range index."""
     model = FakeModel()
     funcs = StringParamFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -233,7 +269,7 @@ def test_get_current_param_type_returns_none_for_out_of_range_index():
 
 
 def test_get_not_found_current_function_param_name():
-    """Test that the current function parameter name is retrieved correctly."""
+    """Get not found current function param name."""
     model = cast(Small_LLM_Model, FakeModel())
     funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -250,8 +286,7 @@ def test_get_not_found_current_function_param_name():
 
 
 def test_get_not_found_current_function_param_index():
-    """Test that the current function parameter index
-    is retrieved correctly."""
+    """Get not found current function param index."""
     model = cast(Small_LLM_Model, FakeModel())
     funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -268,8 +303,7 @@ def test_get_not_found_current_function_param_index():
 
 
 def test_get_not_found_current_function_target_decimals():
-    """Test that the current function target decimals are
-    retrieved correctly."""
+    """Get not found current function target decimals."""
     model = cast(Small_LLM_Model, FakeModel())
     funcs = cast(FunctionsDefinition, NumberParamFunctionsDef())
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -286,8 +320,7 @@ def test_get_not_found_current_function_target_decimals():
 
 
 def test_is_in_fixed_sequence_state():
-    """Test that the state machine correctly identifies
-    fixed sequence states."""
+    """Is in fixed sequence state."""
     model = cast(Small_LLM_Model, FakeModel())
     funcs = cast(FunctionsDefinition, DummyFunctionsDef())
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -325,7 +358,7 @@ def test_is_in_fixed_sequence_state():
 
 
 def test_get_allowed_tokens_returns_next_token_of_fixed_sequence():
-    """A fixed sequence allows only the token at the current progress."""
+    """Get allowed tokens returns next token of fixed sequence."""
     model = cast(Small_LLM_Model, FakeModel())
     funcs = cast(FunctionsDefinition, DummyFunctionsDef())
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -338,7 +371,7 @@ def test_get_allowed_tokens_returns_next_token_of_fixed_sequence():
 
 
 def test_get_allowed_tokens_for_function_name_state():
-    """The function-name state allows the next token of a valid name."""
+    """Get allowed tokens for function name state."""
     model = cast(Small_LLM_Model, FakeModel())
     funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -351,7 +384,7 @@ def test_get_allowed_tokens_for_function_name_state():
 
 
 def test_get_allowed_tokens_for_parameter_name_state():
-    """The parameter-name state allows the next token of its parameter."""
+    """Get allowed tokens for parameter name state."""
     model = cast(Small_LLM_Model, FakeModel())
     funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -366,7 +399,7 @@ def test_get_allowed_tokens_for_parameter_name_state():
 
 
 def test_get_allowed_tokens_falls_back_to_all_vocabulary_ids():
-    """A state without a specific constraint allows all vocabulary IDs."""
+    """Get allowed tokens falls back to all vocabulary ids."""
     model = cast(Small_LLM_Model, FakeModel())
     funcs = cast(FunctionsDefinition, DummyFunctionsDef())
     token_to_id = {"first": 10, "second": 20, "alias": 10}
@@ -378,7 +411,7 @@ def test_get_allowed_tokens_falls_back_to_all_vocabulary_ids():
 
 
 def test_allowed_tokens_for_boolean_parameter():
-    """A boolean parameter allows only the literal true and false tokens."""
+    """Allowed tokens for boolean parameter."""
     token_to_id = {
         "true": 10,
         "false": 20,
@@ -397,7 +430,7 @@ def test_allowed_tokens_for_boolean_parameter():
 
 
 def test_boolean_parameter_transitions_after_complete_literal():
-    """A completed boolean value advances instead of repeating forever."""
+    """Boolean parameter transitions after complete literal."""
     token_to_id = {"true": 10, "false": 20}
     model = cast(Small_LLM_Model, MappedFakeModel(token_to_id))
     funcs = cast(FunctionsDefinition, BooleanParamFunctionsDef())
@@ -413,7 +446,7 @@ def test_boolean_parameter_transitions_after_complete_literal():
 
 
 def test_allowed_tokens_for_unsupported_parameter_type_is_empty():
-    """An unsupported parameter type has no allowed token."""
+    """Allowed tokens for unsupported parameter type is empty."""
     model = cast(Small_LLM_Model, FakeModel())
     funcs = cast(FunctionsDefinition, UnsupportedParamFunctionsDef())
     token_to_id = {"[": 10, "]": 20}
@@ -427,7 +460,7 @@ def test_allowed_tokens_for_unsupported_parameter_type_is_empty():
 
 
 def test_allowed_tokens_for_repeat_pattern():
-    """An existing repetition leaves only the string's closing quote."""
+    """Allowed tokens for repeat pattern."""
     token_to_id = {"a": 10, "b": 20, "c": 30, "\"": 40}
     model = cast(Small_LLM_Model, MappedFakeModel(token_to_id))
     funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
@@ -444,9 +477,7 @@ def test_allowed_tokens_for_repeat_pattern():
 
 
 def test_prompt_target_escapes_quotes_for_json_string():
-    """Test that the prompt target correctly escapes quotes
-    for JSON string values.
-    """
+    """Prompt target escapes quotes for JSON string."""
     model = FakeModel()
     funcs = DummyFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -463,9 +494,7 @@ def test_prompt_target_escapes_quotes_for_json_string():
 
 
 def test_allowed_tokens_for_string_value_uses_actual_token_ids():
-    """Test that the allowed tokens for a string value use
-    the actual token IDs.
-    """
+    """Allowed tokens for string value uses actual token ids."""
     token_to_id = {"x": 10, '"': 42, "y": 99}
     model = MappedFakeModel(token_to_id)
     funcs = StringParamFunctionsDef()
@@ -490,6 +519,7 @@ def test_allowed_tokens_for_string_value_uses_actual_token_ids():
 
 
 def test_string_value_rejects_fragments_that_need_json_escaping():
+    """String value rejects fragments that need JSON escaping."""
     token_to_id = {'"': 10, "safe": 20, "\n": 30, "\\": 40}
     model = MappedFakeModel(token_to_id)
     funcs = StringParamFunctionsDef()
@@ -506,9 +536,7 @@ def test_string_value_rejects_fragments_that_need_json_escaping():
 
 
 def test_number_value_allows_only_terminators_after_precision_is_met():
-    """Test that for a number parameter, once the precision of
-    the prompt value is met,the allowed tokens include only terminators.
-    """
+    """Number value allows only terminators after precision is met."""
     token_to_id = {"1": 11, "2": 22, ",": 33, " ": 44, "}": 55, ".": 66}
     model = MappedFakeModel(token_to_id)
     funcs = NumberParamFunctionsDef()
@@ -527,6 +555,7 @@ def test_number_value_allows_only_terminators_after_precision_is_met():
 
 
 def test_empty_parameter_function_generates_complete_json_suffix():
+    """Empty parameter function generates complete JSON suffix."""
     model = FakeModel()
     funcs = EmptyParamFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -548,7 +577,7 @@ def test_empty_parameter_function_generates_complete_json_suffix():
 
 
 def test_function_name_prefix_can_continue_or_terminate():
-    """A short function name does not hide a longer name sharing its prefix."""
+    """Function name prefix can continue or terminate."""
     model = FakeModel()
     funcs = PrefixFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}

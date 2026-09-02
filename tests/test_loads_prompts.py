@@ -9,14 +9,14 @@ from src.call_me_maybe import load_prompts
 
 
 def test_load_prompts_missing_file():
-    """Test that missing file raises ValueError with path."""
+    """Load prompts missing file."""
     with pytest.raises(ValueError,
                        match="Input file not found.*nonexistent.json"):
         load_prompts("nonexistent.json")
 
 
 def test_load_prompts_empty_file():
-    """Test that empty file raises ValueError."""
+    """Load prompts empty file."""
     with tempfile.NamedTemporaryFile(mode='w',
                                      suffix='.json',
                                      delete=False) as f:
@@ -29,7 +29,7 @@ def test_load_prompts_empty_file():
 
 
 def test_load_prompts_invalid_json():
-    """Test that invalid JSON raises ValueError."""
+    """Load prompts invalid json."""
     with tempfile.NamedTemporaryFile(mode='w',
                                      suffix='.json',
                                      delete=False) as f:
@@ -43,7 +43,7 @@ def test_load_prompts_invalid_json():
 
 
 def test_load_prompts_valid_string():
-    """Test loading valid JSON string."""
+    """Load prompts valid string."""
     with tempfile.NamedTemporaryFile(mode='w',
                                      suffix='.json',
                                      delete=False) as f:
@@ -57,7 +57,7 @@ def test_load_prompts_valid_string():
 
 
 def test_load_prompts_valid_dict_with_prompt():
-    """Test loading valid JSON dict with 'prompt' key."""
+    """Load prompts valid dict with prompt."""
     with tempfile.NamedTemporaryFile(mode='w',
                                      suffix='.json',
                                      delete=False) as f:
@@ -71,7 +71,7 @@ def test_load_prompts_valid_dict_with_prompt():
 
 
 def test_load_prompts_valid_dict_with_prompts():
-    """Test loading valid JSON dict with 'prompts' key."""
+    """Load prompts valid dict with prompts."""
     with tempfile.NamedTemporaryFile(mode='w',
                                      suffix='.json',
                                      delete=False) as f:
@@ -85,7 +85,7 @@ def test_load_prompts_valid_dict_with_prompts():
 
 
 def test_load_prompts_dict_missing_keys():
-    """Test that dict without 'prompt' or 'prompts' raises error."""
+    """Load prompts dict missing keys."""
     with tempfile.NamedTemporaryFile(mode='w',
                                      suffix='.json',
                                      delete=False) as f:
@@ -100,7 +100,7 @@ def test_load_prompts_dict_missing_keys():
 
 
 def test_load_prompts_valid_list():
-    """Test loading valid JSON list."""
+    """Load prompts valid list."""
     with tempfile.NamedTemporaryFile(mode='w',
                                      suffix='.json',
                                      delete=False) as f:
@@ -114,7 +114,7 @@ def test_load_prompts_valid_list():
 
 
 def test_load_prompts_list_with_dicts():
-    """Test loading list of dicts with 'prompt' key."""
+    """Load prompts list with dicts."""
     with tempfile.NamedTemporaryFile(mode='w',
                                      suffix='.json',
                                      delete=False) as f:
@@ -128,7 +128,7 @@ def test_load_prompts_list_with_dicts():
 
 
 def test_load_prompts_list_invalid_item():
-    """Test that list with non-string, non-dict items raises error."""
+    """Load prompts list invalid item."""
     with tempfile.NamedTemporaryFile(mode='w',
                                      suffix='.json',
                                      delete=False) as f:
@@ -143,7 +143,7 @@ def test_load_prompts_list_invalid_item():
 
 
 def test_load_prompts_invalid_root_type():
-    """Test that invalid JSON root type raises error."""
+    """Load prompts invalid root type."""
     with tempfile.NamedTemporaryFile(mode='w',
                                      suffix='.json',
                                      delete=False) as f:
@@ -158,7 +158,7 @@ def test_load_prompts_invalid_root_type():
 
 
 def test_load_prompts_stdin():
-    """Test that None input_path does not raise (would wait for stdin)."""
+    """Load prompts stdin."""
     # We can't actually test stdin, but we can verify None doesn't error early
     # In real usage this would block waiting for input
     # This is more of a documentation test
