@@ -74,6 +74,7 @@ class JSONStateMachine:
         self.current_param_nb = 0
         self.total_params = 0  # Set when function name is known
         self.prompt_decimal_counts = utils.extract_decimal_counts(prompt)
+        self.prompt_numbers = utils.extract_numbers(prompt)
 
     def _get_all_token_ids(self) -> set[int]:
         """Return every unique token ID in the vocabulary."""
@@ -147,6 +148,19 @@ class JSONStateMachine:
         if idx < len(self.prompt_decimal_counts):
             return self.prompt_decimal_counts[idx]
         return None
+
+    def _get_target_number_for_current_param(self) -> str | None:
+        """Return the prompt-derived numeric literal for the parameter."""
+        idx = self._get_current_param_index()
+        if idx is None or idx >= len(self.prompt_numbers):
+            return None
+
+        value = self.prompt_numbers[idx]
+        if self._get_current_param_type() == "integer":
+            if value != value.to_integral_value():
+                return None
+            return str(int(value))
+        return format(value, "f")
 
     def get_target_tokens_for_current_state(self) -> list[int]:
         """Return unconsumed fixed token IDs for the current state."""
@@ -283,6 +297,12 @@ class JSONStateMachine:
         frac_len = len(text.split(".", 1)[1]) if has_dot else 0
         target_decimals = self._get_target_decimals_for_current_param()
         is_integer = self._get_current_param_type() == "integer"
+        target_number = self._get_target_number_for_current_param()
+
+        if target_number is not None:
+            if text == target_number:
+                return self.vocabulary.number_terminator_ids()
+            return self._get_allowed_tokens_for_string(target_number, text)
 
         digit_tokens = set()
         for token_id in self.vocabulary.number_fragment_ids():

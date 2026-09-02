@@ -585,6 +585,25 @@ def test_integer_value_disallows_decimal_fragments_and_can_terminate():
     assert sm.current_text == ""
 
 
+def test_integer_value_cannot_terminate_before_full_prompt_number():
+    """A multi-digit integer must match its complete prompt literal."""
+    token_to_id = {"2": 22, "3": 33, ",": 44, "}": 55}
+    model = MappedFakeModel(token_to_id)
+    funcs = IntegerParamFunctionsDef()
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id, prompt="for 23 years")
+    sm.state = JSONState.PARAM_VAL
+    sm.current_function_name = "fn_even"
+    sm.current_param_nb = 0
+
+    assert sm.get_allowed_tokens() == {22}
+    sm.update(22)
+    assert sm.get_allowed_tokens() == {33}
+    sm.update(33)
+    assert sm.get_allowed_tokens() == {44, 55}
+
+
 def test_empty_parameter_function_generates_complete_json_suffix():
     """Empty parameter function generates complete JSON suffix."""
     model = FakeModel()
