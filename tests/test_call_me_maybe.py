@@ -132,6 +132,24 @@ def test_grounded_numeric_parameters_reject_invented_value():
         )
 
 
+def test_grounded_integer_parameter_rejects_invented_value():
+    """Grounded integer parameters must occur in the prompt."""
+    functions_def = cmm.FunctionsDefinition([
+        FunctionSchema(
+            name="even",
+            parameters={"value": Parameter(type="integer")},
+        )
+    ])
+
+    with pytest.raises(ValueError, match="was not found in the user prompt"):
+        cmm.validate_grounded_parameters(
+            functions_def,
+            "Is 4 even?",
+            "even",
+            {"value": 7},
+        )
+
+
 def test_grounded_boolean_detects_literal_before_punctuation():
     """Grounded boolean detects literal before punctuation."""
     functions_def = cmm.FunctionsDefinition([

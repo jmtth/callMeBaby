@@ -52,6 +52,17 @@ class NumberParamFunctionsDef:
         return {"value": DummyParam("number")}
 
 
+class IntegerParamFunctionsDef:
+    """Provide the IntegerParamFunctionsDef test double."""
+    def list_functions_name(self):
+        """Return function names exposed by the test double."""
+        return ["fn_even"]
+
+    def get_function_parameters_by_name(self, name: str):
+        """Return parameters exposed by the test double."""
+        return {"value": DummyParam("integer")}
+
+
 class BooleanParamFunctionsDef:
     """Provide the BooleanParamFunctionsDef test double."""
     def list_functions_name(self):
@@ -552,6 +563,26 @@ def test_number_value_allows_only_terminators_after_precision_is_met():
     allowed_tokens = sm.get_allowed_tokens()
 
     assert allowed_tokens == {33, 44, 55}
+
+
+def test_integer_value_disallows_decimal_fragments_and_can_terminate():
+    """Integer values remain integral and consume their terminator."""
+    token_to_id = {"1": 11, "2": 22, ",": 33, "}": 44, ".": 55,
+                   "e": 66}
+    model = MappedFakeModel(token_to_id)
+    funcs = IntegerParamFunctionsDef()
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs), token_to_id, prompt="Is 4 even?")
+    sm.state = JSONState.PARAM_VAL
+    sm.current_function_name = "fn_even"
+    sm.current_param_nb = 0
+    sm.current_text = "4"
+
+    assert sm.get_allowed_tokens() == {33, 44}
+    assert sm.update(44) is False
+    assert sm.state == JSONState.END
+    assert sm.current_text == ""
 
 
 def test_empty_parameter_function_generates_complete_json_suffix():

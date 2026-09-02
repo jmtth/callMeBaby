@@ -122,6 +122,31 @@ def test_generation_stops_when_selected_function_lacks_prompt_values():
         )
 
 
+def test_generation_stops_when_integer_lacks_prompt_value():
+    """Generation requires a source literal for an integer parameter."""
+    model = CharacterModel()
+    token_to_id = {chr(token_id): token_id for token_id in range(32, 128)}
+    functions = FunctionsDefinition([
+        FunctionSchema(
+            name="even",
+            parameters={"value": Parameter(type="integer")},
+        )
+    ])
+
+    with pytest.raises(
+        ValueError,
+        match=r"'even'.*1 number parameter\(s\) required, 0 found",
+    ):
+        generate_constrained_response(
+            model,
+            token_to_id,
+            functions,
+            prompt="Select a function",
+            input_prompt="Is this even?",
+            max_res_tokens=128,
+        )
+
+
 class StuckStateMachine:
     """Provide the StuckStateMachine test double."""
 

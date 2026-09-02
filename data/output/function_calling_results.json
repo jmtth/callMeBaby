@@ -83,5 +83,12 @@
       "regex": "cat",
       "replacement": "dog"
     }
+  },
+  {
+    "prompt": "Is 4 an even number?",
+    "name": "fn_is_even",
+    "parameters": {
+      "n": 4
+    }
   }
 ]

@@ -119,7 +119,8 @@ def validate_prompt_capacity(
     """
     parameters = functions_def.get_function_parameters_by_name(function_name)
     required_numbers = sum(
-        parameter.type == "number" for parameter in parameters.values()
+        parameter.type in {"number", "integer"}
+        for parameter in parameters.values()
     )
     required_booleans = sum(
         parameter.type == "boolean" for parameter in parameters.values()

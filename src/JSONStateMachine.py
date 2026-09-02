@@ -211,7 +211,7 @@ class JSONStateMachine:
         if param_type == "string":
             return self._allowed_tokens_for_param_string()
 
-        elif param_type == "number":
+        elif param_type in {"number", "integer"}:
             return self._allowed_tokens_for_param_number()
 
         elif param_type == "boolean":
@@ -282,6 +282,7 @@ class JSONStateMachine:
         has_dot = "." in text
         frac_len = len(text.split(".", 1)[1]) if has_dot else 0
         target_decimals = self._get_target_decimals_for_current_param()
+        is_integer = self._get_current_param_type() == "integer"
 
         digit_tokens = set()
         for token_id in self.vocabulary.number_fragment_ids():
@@ -289,6 +290,9 @@ class JSONStateMachine:
             candidate = text + token_text
 
             if not utils.is_valid_number_fragment(candidate):
+                continue
+
+            if is_integer and ("." in candidate or "e" in candidate):
                 continue
 
             # If prompt has numeric literals, keep their decimal precision.
@@ -313,7 +317,9 @@ class JSONStateMachine:
 
         # Number is complete.
         # Only allow termination when precision target is met.
-        if target_decimals is not None:
+        if is_integer:
+            pass
+        elif target_decimals is not None:
             if target_decimals == 0:
                 if "." in text:
                     return digit_tokens
@@ -417,7 +423,7 @@ class JSONStateMachine:
         if self.state == JSONState.PARAM_VAL:
             param_type = self._get_current_param_type()
             if (
-                param_type == "number"
+                param_type in {"number", "integer"}
                 and utils.is_number_terminator_token(token_text)
                 and utils.is_complete_number(self.current_text)
             ):

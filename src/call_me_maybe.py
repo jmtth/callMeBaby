@@ -170,7 +170,7 @@ def validate_grounded_parameters(functions_def: FunctionsDefinition,
 
     for parameter_name, parameter_schema in schema.items():
         value = parameters[parameter_name]
-        if parameter_schema.type == "number":
+        if parameter_schema.type in {"number", "integer"}:
             try:
                 number = Decimal(str(value))
             except InvalidOperation as exc:
@@ -329,6 +329,7 @@ def run_cli(functions_definition_path: str,
             llm=llm,
             vocabulary=vocabulary,
         )
+        print(f"Prompt: {prompt}\nResponse: {response}\n")
         validated_dict = validate_generated_response(
             functions_def,
             prompt,
