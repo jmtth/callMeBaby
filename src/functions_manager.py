@@ -10,11 +10,12 @@ from pydantic import (
     create_model,
 )
 
-ParameterType = Literal["number", "string", "boolean"]
+ParameterType = Literal["number", "integer", "string", "boolean"]
 
 
 TYPE_MAPPING: dict[ParameterType, type] = {
     "number": float,
+    "integer": int,
     "string": str,
     "boolean": bool,
 }
@@ -75,6 +76,10 @@ class FunctionsDefinition:
             raise ValueError(f"Invalid JSON file: {path_to_json}") from exc
         except (TypeError, ValidationError) as exc:
             raise ValueError(f"Invalid function definition in: {exc}") from exc
+        except Exception as exc:
+            raise ValueError(
+                f"Unexpected error loading functions: {exc}"
+                ) from exc
 
     def list_functions_name(self) -> list[str]:
         """Return a list of function names in the order they were defined."""

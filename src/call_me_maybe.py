@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 import json
 import sys
 from pathlib import Path
-from pydantic import ValidationError
+from pydantic import ValidationError, BaseModel, Field
 
 
 from llm_sdk import Small_LLM_Model, logging
@@ -19,6 +19,11 @@ from src.generator import (
 from src.grounding import collect_prompt_values
 from src.token_vocabulary import TokenVocabulary
 import timeit
+
+
+class PromptSchema(BaseModel):
+    """Describe a single function call request."""
+    prompt: str = Field(..., description="User request to process")
 
 
 def build_prompt(functions_def: FunctionsDefinition, prompt: str) -> str:
@@ -122,37 +127,21 @@ def load_prompts(input_path: str | None) -> list[str]:
             raise ValueError(f"Input file is empty: {input_path}")
     except FileNotFoundError as exc:
         raise ValueError(f"Input file not found: {input_path}") from exc
+    except Exception as exc:
+        raise ValueError(
+            f"Error reading input prompt file {input_path}: {exc}"
+            ) from exc
 
     try:
         data = json.loads(raw_text)
+        prompts = [PromptSchema(**prompt) for prompt in data]
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in {input_path}: {exc}") from exc
-    # prompt like "What is the sum of 2 and 3?"
-    if isinstance(data, str):
-        return [data]
-    # prompt like {"prompt": "What is the sum of 2 and 3?"}
-    if isinstance(data, dict):
-        if "prompt" in data:
-            return [str(data["prompt"])]
-        if "prompts" in data and isinstance(data["prompts"], list):
-            return [str(item) for item in data["prompts"]]
+    except Exception as exc:
         raise ValueError(
-            f"JSON dict must contain 'prompt' or 'prompts' key: {input_path}")
-    # prompt like [{"prompt": "What is the sum of 2 and 3?"}, ...]
-    if isinstance(data, list):
-        prompts: list[str] = []
-        for item in data:
-            if isinstance(item, dict) and "prompt" in item:
-                prompts.append(str(item["prompt"]))
-            elif isinstance(item, str):
-                prompts.append(item)
-            else:
-                raise ValueError(
-                    f"List items must be strings or dicts \
-                        with 'prompt' key: {input_path}")
-        return prompts
-
-    raise ValueError(f"JSON must be string, dict, or list: {input_path}")
+            f"Unexpected error loading prompts: {exc}"
+            ) from exc
+    return [prompt.prompt for prompt in prompts]
 
 
 def validate_grounded_parameters(functions_def: FunctionsDefinition,
@@ -381,14 +370,12 @@ def main(argv: list[str] | None = None) -> int:
         "--input",
         dest="input_path",
         default="data/input/function_calling_tests.json",
-        # default=None,
         help="Path to the list of prompts JSON file.",
     )
     parser.add_argument(
         "--output",
         dest="output_path",
         default="data/output/function_calling_results.json",
-        # default=None,
         help="Path where the generated responses should be written.",
     )
     parser.add_argument(
