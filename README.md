@@ -86,6 +86,8 @@ structure insertions, and the twelve highest-logit tokens that remain valid
 under the active constraint. Generation runs in a background worker so the
 interface remains responsive. Press `q` to quit or `c` to clear the event log.
 
+![Visualizer screenshot](screen_capture.gif)
+
 ## Algorithm
 
 The generation pipeline works as follows:
