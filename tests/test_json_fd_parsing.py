@@ -156,12 +156,13 @@ def test_get_nb_parameters_nonexistent_function():
 
 
 def test_get_functions_prompt():
-    """Get functions prompt."""
+    """Get a concise function list without parameter-order hints."""
     functions_def = FunctionsDefinition.from_json(
         "./tests/data/valid_functions_definition.json")
     prompt = functions_def.get_functions_prompt()
-    expected_prompt = (
-        "Here are the available functions:\n\n"
-        " - Function Name: fn_add_numbers\n"
+    assert (
+        "- fn_add_numbers: Add two numbers together and return their sum."
+        in prompt
     )
-    assert expected_prompt in prompt
+    assert "Parameters:" not in prompt
+    assert "type:" not in prompt

@@ -40,15 +40,20 @@ def build_prompt(functions_def: FunctionsDefinition, prompt: str) -> str:
     Returns:
         The complete prompt to send to the model.
     """
-    new_prompt = (
-        "Select exactly one of the available functions whose name and "
-        "description best match the user request. Extract a value for every "
-        "required parameter according to its declared type.\n\n"
+    system_prompt = (
+        "You are a function calling router. "
+        "Available functions:\n"
+        f"{functions_def.get_functions_prompt()}\n. "
+        "Return a JSON object with the name of the function that matches "
+        "the user request. The parameter VALUES must be extracted DIRECTLY "
+        "and LITERALLY from the user prompt when possible."
     )
-    new_prompt += functions_def.get_functions_prompt()
-    new_prompt += "Now, answer the following question:\n"
-    new_prompt += prompt
-    return new_prompt
+    return (
+        f"<|im_start|>system\n{system_prompt}<|im_end|>\n"
+        f"<|im_start|>user\n{prompt}<|im_end|>\n"
+        "<|im_start|>assistant\n"
+        "<think>\n\n</think>\n\n"
+    )
 
 
 def build_token_to_id(vocab: dict) -> dict[str, int]:
@@ -407,6 +412,11 @@ def main(argv: list[str] | None = None) -> int:
         "--visualize",
         action="store_true",
         help="Open the Textual constrained-generation visualizer.",
+    )
+    parser.add_argument(
+        "--model",
+        default="Qwen/Qwen3-0.6B",
+        help="Name of the small LLM model to use.",
     )
     args = parser.parse_args(argv)
 

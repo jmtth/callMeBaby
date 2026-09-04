@@ -44,6 +44,7 @@ class TokenVocabulary:
         self._exact_text_ids: dict[str, set[int]] = {}
         self._number_ids: set[int] | None = None
         self._json_string_ids: set[int] | None = None
+        self._quote_containing_ids: set[int] | None = None
 
     def text(self, token_id: int) -> str:
         """Return and cache the text actually produced by one token ID."""
@@ -75,6 +76,21 @@ class TokenVocabulary:
             and remaining.startswith(token_text)
         }
 
+    def ids_continuing_any(
+        self,
+        targets: Iterable[str],
+        generated: str,
+    ) -> set[int]:
+        """Return IDs continuing any target compatible with the prefix."""
+        allowed_ids: set[int] = set()
+
+        for target in targets:
+            allowed_ids.update(
+                self.ids_continuing(target, generated)
+            )
+
+        return allowed_ids
+
     def number_fragment_ids(self) -> set[int]:
         """Return IDs whose decoded text can participate in a number."""
         if self._number_ids is None:
@@ -103,6 +119,16 @@ class TokenVocabulary:
                 if self._is_safe_json_string_fragment(self.text(token_id))
             }
         return set(self._json_string_ids)
+
+    def quote_containing_ids(self) -> set[int]:
+        """Return IDs whose decoded token contains a double quote."""
+        if self._quote_containing_ids is None:
+            self._quote_containing_ids = {
+                token_id
+                for token_id in self.all_ids
+                if '"' in self.text(token_id)
+            }
+        return set(self._quote_containing_ids)
 
     @staticmethod
     def _is_safe_json_string_fragment(token_text: str) -> bool:

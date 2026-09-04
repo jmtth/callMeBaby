@@ -1,5 +1,5 @@
 import src.call_me_maybe as cmm
-from src.grounding import infer_string_parameters
+from src.grounding import extract_path
 from src.models import JSONState
 from unittest.mock import MagicMock, patch, mock_open
 import pytest
@@ -20,7 +20,7 @@ def test_build_prompt_includes_functions():
 
     result = cmm.build_prompt(fakeFunctionsDefinition, "What is 1+1?")
 
-    assert "Select exactly one of the available functions" in result
+    assert "You are a function calling router" in result
     assert "Here are the available functions:" in result
     assert "What is 1+1?" in result
     assert "add" in result
@@ -504,55 +504,22 @@ def test_generate_response_loads_model_if_none(mock_fsm_class,
     mock_load_model.assert_called_once()
 
 
-def test_infer_greet_name_from_prompt():
-    """Infer greet name from prompt."""
-    assert infer_string_parameters("Greet shrek") == {"name": "shrek"}
-
-
-def test_infer_literal_substitution_parameters():
-    """Infer literal substitution parameters."""
-    prompt = "Substitute the word 'cat' with 'dog' in 'The cat sat'"
-
-    assert infer_string_parameters(prompt) == {
-        "source_string": "The cat sat",
-        "regex": "cat",
-        "replacement": "dog",
-    }
-
-
-def test_infer_number_regex_substitution_parameters():
-    """Infer number regex substitution parameters."""
-    prompt = 'Replace all numbers in "Hello 34 and 233" with NUMBERS'
-
-    assert infer_string_parameters(prompt) == {
-        "source_string": "Hello 34 and 233",
-        "regex": "[0-9]+",
-        "replacement": "NUMBERS",
-    }
-
-
-def test_infer_posix_path_without_leading_space():
-    """Infer a Unix path exactly without surrounding request whitespace."""
+def test_extract_posix_path_without_leading_space():
+    """Extract a Unix path exactly without surrounding request whitespace."""
     prompt = "Read the file at /home/user/data.json with utf-8 encoding"
 
-    assert infer_string_parameters(prompt) == {
-        "path": "/home/user/data.json",
-    }
+    assert extract_path(prompt) == "/home/user/data.json"
 
 
-def test_infer_windows_path_preserves_backslashes():
-    """Infer a Windows path without normalizing its separators."""
+def test_extract_windows_path_preserves_backslashes():
+    """Extract a Windows path without normalizing its separators."""
     prompt = r"Read C:\Users\john\config.ini with latin-1 encoding"
 
-    assert infer_string_parameters(prompt) == {
-        "path": r"C:\Users\john\config.ini",
-    }
+    assert extract_path(prompt) == r"C:\Users\john\config.ini"
 
 
-def test_infer_quoted_path_preserves_spaces():
-    """Infer the entire path when spaces are protected by quotes."""
+def test_extract_quoted_path_preserves_spaces():
+    """Extract the entire path when spaces are protected by quotes."""
     prompt = 'Read "/home/user/my data.json" with utf-8 encoding'
 
-    assert infer_string_parameters(prompt) == {
-        "path": "/home/user/my data.json",
-    }
+    assert extract_path(prompt) == "/home/user/my data.json"

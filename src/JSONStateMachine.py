@@ -3,10 +3,10 @@ from typing import cast
 
 from src.models import JSONState
 from src import utils
-from src.functions_manager import FunctionsDefinition, Parameter
+from src.functions_manager import FunctionsDefinition
 from src.grounding import (
     contains_response_structure,
-    infer_string_parameters,
+    extract_path,
     validate_prompt_capacity,
 )
 from src.token_vocabulary import TokenModel, TokenVocabulary
@@ -44,10 +44,12 @@ class JSONStateMachine:
         self.functions_names = functions_def.list_functions_name()
         self.functions = functions_def
         self.prompt = prompt
-        self.grounded_string_parameters = {
-            name: json.dumps(value, ensure_ascii=False)[1:-1]
-            for name, value in infer_string_parameters(prompt).items()
-        }
+        prompt_path = extract_path(prompt)
+        self.grounded_path = (
+            json.dumps(prompt_path, ensure_ascii=False)[1:-1]
+            if prompt_path is not None
+            else None
+        )
         self.token_to_id = token_to_id
         self.vocabulary = vocabulary or TokenVocabulary(model, token_to_id)
 
@@ -59,6 +61,8 @@ class JSONStateMachine:
                 return [int(token_id) for token_id in cast(list[int],
                                                            enc0.tolist())]
             return [int(token_id) for token_id in enc0]
+
+        self._encode_fixed_text = _norm_encode
 
         # Escape user prompt for insertion inside a JSON string value.
         escaped_prompt = json.dumps(prompt, ensure_ascii=False)[1:-1]
@@ -75,10 +79,13 @@ class JSONStateMachine:
             JSONState.PARAM_COMMA: _norm_encode(', "'),
             JSONState.END: _norm_encode("}}"),
         }
+        self._canonical_param_comma = list(self.targets[JSONState.PARAM_COMMA])
+        self._canonical_end = list(self.targets[JSONState.END])
 
         self.progress = 0
-        self.prompt_list = prompt.split()
         self.current_param_nb = 0
+        self.current_parameter_name: str | None = None
+        self.generated_param_names: set[str] = set()
         self.total_params = 0  # Set when function name is known
         self.prompt_decimal_counts = utils.extract_decimal_counts(prompt)
         self.prompt_numbers = utils.extract_numbers(prompt)
@@ -118,17 +125,20 @@ class JSONStateMachine:
         if params is None:
             return None
 
-        idx = self._get_adjusted_param_index()
-        values: list[Parameter] = [*params.values()]
-        if idx < 0 or idx >= len(values):
+        param_name = self._get_current_param_name()
+        if param_name is None or param_name not in params:
             return None
-
-        return values[idx].type
+        return params[param_name].type
 
     def _get_current_param_name(self) -> str | None:
         """Get the name of the current parameter, or None if invalid."""
         params = self._get_current_function_params()
         if params is None:
+            return None
+
+        if self.current_parameter_name is not None:
+            if self.current_parameter_name in params:
+                return self.current_parameter_name
             return None
 
         idx = self._get_adjusted_param_index()
@@ -139,13 +149,30 @@ class JSONStateMachine:
 
     def _get_current_param_index(self) -> int | None:
         """Get the index of the current parameter, or None if invalid."""
-        if self.current_function_name not in self.functions_names:
+        params = self._get_current_function_params()
+        if params is None:
             return None
+
+        if self.current_parameter_name is not None:
+            try:
+                return [*params.keys()].index(self.current_parameter_name)
+            except ValueError:
+                return None
 
         idx = self._get_adjusted_param_index()
         if idx < 0:
             return None
         return idx
+
+    def _get_remaining_parameter_names(self) -> list[str]:
+        """Return ungenerated parameters in their schema declaration order."""
+        params = self._get_current_function_params()
+        if params is None:
+            return []
+        return [
+            name for name in params
+            if name not in self.generated_param_names
+        ]
 
     def _get_target_decimals_for_current_param(self) -> int | None:
         """Return the prompt-derived decimal precision for the parameter."""
@@ -211,17 +238,14 @@ class JSONStateMachine:
     def _allowed_tokens_for_parameter_name(self) -> set[int]:
         """Get the allowed token ids for the current parameter name."""
         allowed_tokens: set[int] = set()
-        params = self._get_current_function_params()
-        if params is not None:
-            param_names = [*params.keys()]
-            if self.current_param_nb < len(param_names):
-                param_name = param_names[self.current_param_nb]
-                allowed_tokens.update(
-                    self._get_allowed_tokens_for_string(
-                        param_name,
-                        self.current_text,
-                    )
+        remaining_names = self._get_remaining_parameter_names()
+        if remaining_names:
+            allowed_tokens.update(
+                self.vocabulary.ids_continuing_any(
+                    remaining_names,
+                    self.current_text,
                 )
+            )
         return allowed_tokens
 
     def _allowed_tokens_for_parameter_value(self) -> set[int]:
@@ -238,7 +262,7 @@ class JSONStateMachine:
         elif param_type == "boolean":
             for literal in ("true", "false"):
                 allowed_tokens.update(
-                    self._get_allowed_tokens_for_string(
+                    self.vocabulary.ids_continuing(
                         literal,
                         self.current_text,
                     )
@@ -263,13 +287,13 @@ class JSONStateMachine:
             return quote_ids
 
         param_name = self._get_current_param_name()
-        grounded_value = self.grounded_string_parameters.get(param_name or "")
+        grounded_value = self.grounded_path if param_name == "path" else None
         if grounded_value is not None:
-            allowed_tokens = self._allowed_tokens_for_grounded_string(
-                grounded_value
+            generated = self.current_text[1:]
+            allowed_tokens = self.vocabulary.ids_continuing(
+                grounded_value,
+                generated,
             )
-        elif param_name == 'replacement':
-            allowed_tokens = self._allowed_tokens_for_replacement()
         else:
             allowed_tokens = self.vocabulary.json_string_content_ids()
 
@@ -278,6 +302,7 @@ class JSONStateMachine:
             for token_id in allowed_tokens
             if self._is_safe_string_continuation(token_id)
         }
+        safe_tokens.update(self._string_boundary_token_ids())
         safe_tokens.update(quote_ids)
         if grounded_value is not None:
             generated = self.current_text[1:]
@@ -285,10 +310,54 @@ class JSONStateMachine:
                 safe_tokens.difference_update(quote_ids)
         return safe_tokens
 
-    def _allowed_tokens_for_grounded_string(self, value: str) -> set[int]:
-        """Return token fragments that continue an extracted string value."""
-        generated = self.current_text[1:]
-        return self._get_allowed_tokens_for_string(value, generated)
+    def _next_string_delimiter(self) -> str:
+        """Return the JSON delimiter expected after the current string."""
+        completed_count = len(self.generated_param_names) + 1
+        return ', "' if completed_count < self.total_params else "}}"
+
+    def _split_string_boundary_token(
+        self,
+        token_text: str,
+    ) -> tuple[str, str, str] | None:
+        """Split a token spanning string content, quote, and next delimiter."""
+        delimiter = self._next_string_delimiter()
+        for quote_index, char in enumerate(token_text):
+            if char != '"':
+                continue
+            backslashes = 0
+            cursor = quote_index - 1
+            while cursor >= 0 and token_text[cursor] == "\\":
+                backslashes += 1
+                cursor -= 1
+            if backslashes % 2:
+                continue
+
+            content = token_text[:quote_index]
+            suffix = token_text[quote_index + 1:]
+            if not delimiter.startswith(suffix):
+                continue
+            candidate = self.current_text + content + '"'
+            try:
+                json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if len(self.current_text + content) > MAX_STRING_LENGTH:
+                continue
+            if contains_response_structure(candidate, self.prompt):
+                continue
+            return content, suffix, delimiter
+        return None
+
+    def _string_boundary_token_ids(self) -> set[int]:
+        """Return tokens that validly cross the end of a string value."""
+        return {
+            token_id
+            for token_id in self.vocabulary.quote_containing_ids()
+            if self.vocabulary.text(token_id) != '"'
+            and self._split_string_boundary_token(
+                self.vocabulary.text(token_id)
+            ) is not None
+        }
 
     def _is_safe_string_continuation(self, token_id: int) -> bool:
         """Return whether a token safely extends the current string value."""
@@ -311,7 +380,8 @@ class JSONStateMachine:
         if target_number is not None:
             if text == target_number:
                 return self.vocabulary.number_terminator_ids()
-            return self._get_allowed_tokens_for_string(target_number, text)
+            return self.vocabulary.ids_continuing(
+                target_number, text)
 
         digit_tokens = set()
         for token_id in self.vocabulary.number_fragment_ids():
@@ -378,7 +448,7 @@ class JSONStateMachine:
         ]
         for s in still_possible:
             allowed_tokens.update(
-                self._get_allowed_tokens_for_string(
+                self.vocabulary.ids_continuing(
                     s,
                     self.current_text,
                 )
@@ -390,35 +460,6 @@ class JSONStateMachine:
                 if target:
                     allowed_tokens.add(target[0])
         return allowed_tokens
-
-    def _allowed_tokens_for_replacement(self) -> set[int]:
-        """Get the allowed token ids for the 'replacement' parameter value."""
-        allowed_tokens: set[int] = set()
-        generated = self.current_text[1:]  # Skip the opening quote.
-        still_possible = [
-            value for value in self.prompt_list if value.startswith(generated)
-        ]
-        for s in still_possible:
-            allowed_tokens.update(
-                self._get_allowed_tokens_for_string(
-                    s,
-                    generated,
-                )
-            )
-        if generated in self.prompt_list:
-            allowed_tokens.update(self.vocabulary.exact_ids('"'))
-        return allowed_tokens
-
-    def _get_allowed_tokens_for_string(
-        self,
-        target_string: str,
-        current_generated_text: str,
-    ) -> set[int]:
-        """Return token IDs that continue a target string from its prefix."""
-        return self.vocabulary.ids_continuing(
-            target_string,
-            current_generated_text,
-        )
 
     def update(self, token_id: int) -> bool:
         """Consume one token and advance the state machine when appropriate.
@@ -436,6 +477,32 @@ class JSONStateMachine:
             ValueError: If a token violates a fixed sequence.
         """
         token_text = self.vocabulary.text(token_id)
+
+        if self.state == JSONState.PARAM_VAL:
+            param_type = self._get_current_param_type()
+            boundary = (
+                self._split_string_boundary_token(token_text)
+                if param_type == "string" and token_text != '"'
+                else None
+            )
+            if boundary is not None:
+                content, consumed_delimiter, delimiter = boundary
+                self.current_text += content + '"'
+                self._complete_current_parameter()
+                self._update_state()
+                remaining_delimiter = delimiter[len(consumed_delimiter):]
+                if not remaining_delimiter:
+                    if self.state == JSONState.PARAM_COMMA:
+                        self.state = JSONState.PARAM_NAME
+                    elif self.state == JSONState.END:
+                        self.state = JSONState.STOP
+                else:
+                    self.targets[self.state] = self._encode_fixed_text(
+                        remaining_delimiter
+                    )
+                self.current_text = ""
+                self.progress = 0
+                return True
 
         if self.state == JSONState.NAME_VAL:
             boundary_state = self._state_after_function_name()
@@ -456,6 +523,7 @@ class JSONStateMachine:
                 and utils.is_number_terminator_token(token_text)
                 and utils.is_complete_number(self.current_text)
             ):
+                self._complete_current_parameter()
                 self._update_state()
                 self.current_text = ""
                 return False
@@ -477,13 +545,10 @@ class JSONStateMachine:
             self.current_function_name = self.current_text
 
         elif self.state == JSONState.PARAM_NAME:
-            params = self._get_current_function_params()
-            if params is not None:
-                param_names = [*params.keys()]
-                if self.current_text in param_names:
-                    self.current_param_nb += 1
-                    self._update_state()
-                    self.current_text = ""
+            if self.current_text in self._get_remaining_parameter_names():
+                self.current_parameter_name = self.current_text
+                self._update_state()
+                self.current_text = ""
 
         elif self.state == JSONState.PARAM_VAL:
             param_type = self._get_current_param_type()
@@ -491,6 +556,7 @@ class JSONStateMachine:
                 param_type == "boolean"
                 and self.current_text in {"true", "false"}
             ):
+                self._complete_current_parameter()
                 self._update_state()
                 self.current_text = ""
             elif (
@@ -499,6 +565,7 @@ class JSONStateMachine:
                 and self.current_text.startswith('"')
                 and token_text == '"'
             ):
+                self._complete_current_parameter()
                 self._update_state()
                 self.current_text = ""
 
@@ -520,9 +587,21 @@ class JSONStateMachine:
             self.current_text,
         )
         self.current_function_name = self.current_text
+        self.current_parameter_name = None
+        self.generated_param_names.clear()
+        self.current_param_nb = 0
         self.total_params = self.functions.get_nb_parameters(
             self.current_function_name
         )
+
+    def _complete_current_parameter(self) -> None:
+        """Mark the selected parameter as generated and clear the selection."""
+        if self.current_parameter_name is None:
+            self.current_parameter_name = self._get_current_param_name()
+        if self.current_parameter_name is not None:
+            self.generated_param_names.add(self.current_parameter_name)
+        self.current_param_nb = len(self.generated_param_names)
+        self.current_parameter_name = None
 
     def _update_state(self) -> None:
         """Advance to the next structural JSON generation state."""
@@ -545,13 +624,17 @@ class JSONStateMachine:
         elif self.state == JSONState.PARAM_COLON:
             self.state = JSONState.PARAM_VAL
         elif self.state == JSONState.PARAM_VAL:
-            if self.current_param_nb < self.total_params:
+            if len(self.generated_param_names) < self.total_params:
                 self.state = JSONState.PARAM_COMMA
             else:
                 self.state = JSONState.END
         elif self.state == JSONState.PARAM_COMMA:
+            self.targets[JSONState.PARAM_COMMA] = list(
+                self._canonical_param_comma
+            )
             self.state = JSONState.PARAM_NAME
         elif self.state == JSONState.END:
+            self.targets[JSONState.END] = list(self._canonical_end)
             self.state = JSONState.STOP
         else:
             raise ValueError("Invalid state transition")

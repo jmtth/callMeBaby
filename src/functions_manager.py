@@ -111,16 +111,11 @@ class FunctionsDefinition:
         return len(params)
 
     def get_functions_prompt(self) -> str:
-        """Format all function definitions for inclusion in a model prompt."""
-        prompt = "Here are the available functions:\n\n"
-        for func in self.functions:
-            prompt += f" - Function Name: {func.name}\n"
-            prompt += f"   Description: {func.description}\n"
-            prompt += "   Parameters:\n"
-            for param_name, param in func.parameters.items():
-                prompt += f"    - {param_name} (type: {param.type})\n"
-            prompt += "\n"
-        return prompt
+        """Format a concise function list for the model router prompt."""
+        return "\n".join(
+            f"- {func.name}: {func.description}"
+            for func in self.functions
+        )
 
     def get_output_function_model(self, name: str) -> type[BaseModel]:
         """Build a strict Pydantic output model for a selected function.

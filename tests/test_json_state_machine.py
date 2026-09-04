@@ -30,6 +30,32 @@ class StringParamFunctionsDef:
         return {"text": DummyParam("string")}
 
 
+class PathParamFunctionsDef:
+    """Provide a function definition with one path parameter."""
+    def list_functions_name(self):
+        """Return function names exposed by the test double."""
+        return ["fn_read"]
+
+    def get_function_parameters_by_name(self, name: str):
+        """Return the path parameter exposed by the test double."""
+        return {"path": DummyParam("string")}
+
+
+class SubstitutionFunctionsDef:
+    """Provide three string parameters in their schema declaration order."""
+    def list_functions_name(self):
+        """Return function names exposed by the test double."""
+        return ["fn_substitute"]
+
+    def get_function_parameters_by_name(self, name: str):
+        """Return substitution parameters exposed by the test double."""
+        return {
+            "source_string": DummyParam("string"),
+            "regex": DummyParam("string"),
+            "replacement": DummyParam("string"),
+        }
+
+
 class NotParamFunctionsDef:
     """Provide the NotParamFunctionsDef test double."""
     def list_functions_name(self):
@@ -309,8 +335,8 @@ def test_string_continuation_allows_placeholder_from_request():
     assert sm._is_safe_string_continuation(ord("}"))
 
 
-def test_windows_path_is_json_escaped_before_string_generation():
-    """A grounded Windows path keeps its slashes in valid JSON form."""
+def test_windows_path_is_json_escaped_for_fsm():
+    """The dedicated path guard stores valid JSON string content."""
     model = FakeModel()
     funcs = StringParamFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -322,9 +348,29 @@ def test_windows_path_is_json_escaped_before_string_generation():
         prompt=prompt,
     )
 
-    assert sm.grounded_string_parameters == {
-        "path": r"C:\\Users\\john\\config.ini",
-    }
+    assert sm.grounded_path == r"C:\\Users\\john\\config.ini"
+
+
+def test_path_parameter_starts_with_exact_prompt_path():
+    """A path value cannot start with whitespace absent from its source."""
+    model = FakeModel()
+    funcs = PathParamFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs),
+        token_to_id,
+        prompt="Read the file at /home/user/data.json",
+    )
+    sm.current_function_name = "fn_read"
+    sm.current_param_nb = 1
+    sm.state = JSONState.PARAM_VAL
+    sm.current_text = '"'
+
+    allowed = sm._allowed_tokens_for_param_string()
+
+    assert ord("/") in allowed
+    assert ord(" ") not in allowed
 
 
 def test_get_current_param_type_returns_none_for_out_of_range_index():
@@ -472,6 +518,86 @@ def test_get_allowed_tokens_for_parameter_name_state():
     sm.current_text = ""
 
     assert sm.get_allowed_tokens() == {ord("t")}
+
+
+def test_parameter_name_selection_can_ignore_schema_order():
+    """The LLM may select regex before the first declared parameter."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, SubstitutionFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.PARAM_NAME
+    sm.current_function_name = "fn_substitute"
+    sm.total_params = 3
+
+    for char in "regex":
+        sm.update(ord(char))
+
+    assert sm.state == JSONState.PARAM_COLON
+    assert sm.current_parameter_name == "regex"
+    assert sm.current_param_nb == 0
+
+    sm.state = JSONState.PARAM_VAL
+    sm.current_text = '"cat'
+    sm.update(ord('"'))
+
+    assert sm.state == JSONState.PARAM_COMMA
+    assert sm.current_parameter_name is None
+    assert sm.generated_param_names == {"regex"}
+    assert sm.current_param_nb == 1
+
+    sm.state = JSONState.PARAM_NAME
+    sm.current_text = "regex"
+    assert sm.get_allowed_tokens() == set()
+
+
+def test_string_token_can_cross_into_parameter_comma():
+    """A token may close a string and consume part of the next delimiter."""
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    token_to_id[')",'] = 1000
+    model = cast(Small_LLM_Model, MappedFakeModel(token_to_id))
+    funcs = cast(FunctionsDefinition, SubstitutionFunctionsDef())
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.PARAM_VAL
+    sm.current_function_name = "fn_substitute"
+    sm.current_parameter_name = "regex"
+    sm.total_params = 3
+    sm.current_text = '"([0-9]+'
+
+    assert 1000 in sm.get_allowed_tokens()
+    assert sm.update(1000)
+    assert sm.generated_param_names == {"regex"}
+    assert sm.state == JSONState.PARAM_COMMA
+    assert model.decode(sm.get_target_tokens_for_current_state()) == ' "'
+
+    for token_id in sm.get_target_tokens_for_current_state():
+        sm.update(token_id)
+
+    assert sm.state == JSONState.PARAM_NAME
+    assert model.decode(sm.targets[JSONState.PARAM_COMMA]) == ', "'
+
+
+def test_string_token_can_consume_final_json_suffix():
+    """A final string token may also contain the complete JSON suffix."""
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    token_to_id['"}}'] = 1000
+    model = cast(Small_LLM_Model, MappedFakeModel(token_to_id))
+    funcs = cast(FunctionsDefinition, SubstitutionFunctionsDef())
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.PARAM_VAL
+    sm.current_function_name = "fn_substitute"
+    sm.current_parameter_name = "source_string"
+    sm.generated_param_names = {"regex", "replacement"}
+    sm.current_param_nb = 2
+    sm.total_params = 3
+    sm.current_text = '"Hello'
+
+    assert 1000 in sm.get_allowed_tokens()
+    assert sm.update(1000)
+    assert sm.state == JSONState.STOP
+    assert sm.generated_param_names == {
+        "regex", "replacement", "source_string",
+    }
 
 
 def test_get_allowed_tokens_falls_back_to_all_vocabulary_ids():
