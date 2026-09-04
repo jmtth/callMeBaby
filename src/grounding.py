@@ -11,6 +11,56 @@ from src.functions_manager import FunctionsDefinition
 
 
 BOOLEAN_PATTERN = re.compile(r"\b(true|false)\b", re.IGNORECASE)
+RESPONSE_STRUCTURE_PATTERN = re.compile(
+    r"(?:\{\s*[\"']?|[\"'])(?:prompt|parameters|name)[\"']?\s*:",
+    re.IGNORECASE,
+)
+RESPONSE_FIELD_WORD_PATTERN = re.compile(
+    r"\b(?:prompt|parameters|name)\b",
+    re.IGNORECASE,
+)
+PLACEHOLDER_PATTERN = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}")
+QUOTED_PATH_PATTERN = re.compile(
+    r"([\"'])(?P<path>(?:[A-Za-z]:[\\/]|/).*?)\1"
+)
+WINDOWS_PATH_PATTERN = re.compile(r"(?<!\w)[A-Za-z]:\\[^\s\"']+")
+POSIX_PATH_PATTERN = re.compile(r"(?<!\w)/[^\s\"']+")
+
+
+def contains_response_structure(value: str, source_prompt: str = "") -> bool:
+    """Return whether a string embeds structure absent from the user prompt.
+
+    Object-key fragments are always rejected. Reserved response-field words
+    and named placeholders are accepted only when the user supplied them.
+    """
+    if RESPONSE_STRUCTURE_PATTERN.search(value):
+        return True
+
+    source_words = {
+        match.group(0).casefold()
+        for match in RESPONSE_FIELD_WORD_PATTERN.finditer(source_prompt)
+    }
+    for match in RESPONSE_FIELD_WORD_PATTERN.finditer(value):
+        if match.group(0).casefold() not in source_words:
+            return True
+
+    return any(
+        match.group(0) not in source_prompt
+        for match in PLACEHOLDER_PATTERN.finditer(value)
+    )
+
+
+def extract_path(prompt: str) -> str | None:
+    """Extract the first literal Unix or Windows path from a prompt."""
+    quoted = QUOTED_PATH_PATTERN.search(prompt)
+    if quoted:
+        return quoted.group("path")
+
+    for pattern in (WINDOWS_PATH_PATTERN, POSIX_PATH_PATTERN):
+        match = pattern.search(prompt)
+        if match:
+            return match.group(0)
+    return None
 
 
 def infer_string_parameters(prompt: str) -> dict[str, str]:
@@ -78,6 +128,10 @@ def infer_string_parameters(prompt: str) -> dict[str, str]:
     )
     if reverse:
         return {"s": reverse.group(2)}
+
+    path = extract_path(prompt)
+    if path is not None:
+        return {"path": path}
 
     return {}
 

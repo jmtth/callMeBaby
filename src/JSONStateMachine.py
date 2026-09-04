@@ -4,7 +4,11 @@ from typing import cast
 from src.models import JSONState
 from src import utils
 from src.functions_manager import FunctionsDefinition, Parameter
-from src.grounding import infer_string_parameters, validate_prompt_capacity
+from src.grounding import (
+    contains_response_structure,
+    infer_string_parameters,
+    validate_prompt_capacity,
+)
 from src.token_vocabulary import TokenModel, TokenVocabulary
 
 
@@ -40,7 +44,10 @@ class JSONStateMachine:
         self.functions_names = functions_def.list_functions_name()
         self.functions = functions_def
         self.prompt = prompt
-        self.grounded_string_parameters = infer_string_parameters(prompt)
+        self.grounded_string_parameters = {
+            name: json.dumps(value, ensure_ascii=False)[1:-1]
+            for name, value in infer_string_parameters(prompt).items()
+        }
         self.token_to_id = token_to_id
         self.vocabulary = vocabulary or TokenVocabulary(model, token_to_id)
 
@@ -287,6 +294,8 @@ class JSONStateMachine:
         """Return whether a token safely extends the current string value."""
         candidate = self.current_text + self.vocabulary.text(token_id)
         if len(candidate) > MAX_STRING_LENGTH:
+            return False
+        if contains_response_structure(candidate, self.prompt):
             return False
         return not utils.get_repeating_pattern(candidate)
 

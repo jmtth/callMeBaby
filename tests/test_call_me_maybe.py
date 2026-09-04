@@ -168,6 +168,117 @@ def test_grounded_boolean_detects_literal_before_punctuation():
     )
 
 
+def test_string_parameter_rejects_embedded_response_structure():
+    """String parameters reject leaked response-object fields."""
+    functions_def = cmm.FunctionsDefinition([
+        FunctionSchema(
+            name="echo",
+            parameters={"text": Parameter(type="string")},
+        )
+    ])
+
+    with pytest.raises(ValueError, match="response-structure fragment"):
+        cmm.validate_grounded_parameters(
+            functions_def,
+            "Echo hello",
+            "echo",
+            {"text": "hello {prompt: 'Echo hello'"},
+        )
+
+
+def test_string_parameter_rejects_invented_field_word_and_placeholders():
+    """String parameters reject metadata and placeholders not in the prompt."""
+    functions_def = cmm.FunctionsDefinition([
+        FunctionSchema(
+            name="format",
+            parameters={"template": Parameter(type="string")},
+        )
+    ])
+    generated = (
+        "Say hello to {name} with the prompt: {prompt} "
+        "and {name} is the name of the {id}"
+    )
+
+    with pytest.raises(ValueError, match="response-structure fragment"):
+        cmm.validate_grounded_parameters(
+            functions_def,
+            'Format template: Say "hello" to {name}',
+            "format",
+            {"template": generated},
+        )
+
+
+def test_string_parameter_allows_plain_structure_words():
+    """Plain words matching output-field names remain valid string values."""
+    functions_def = cmm.FunctionsDefinition([
+        FunctionSchema(
+            name="echo",
+            parameters={"text": Parameter(type="string")},
+        )
+    ])
+
+    cmm.validate_grounded_parameters(
+        functions_def,
+        "Echo the name and parameters",
+        "echo",
+        {"text": "the name and parameters"},
+    )
+
+
+def test_path_parameter_rejects_leading_space():
+    """A path parameter must exactly match the Unix path in the prompt."""
+    functions_def = cmm.FunctionsDefinition([
+        FunctionSchema(
+            name="read",
+            parameters={"path": Parameter(type="string")},
+        )
+    ])
+
+    with pytest.raises(ValueError, match="does not exactly match"):
+        cmm.validate_grounded_parameters(
+            functions_def,
+            "Read the file at /home/user/data.json",
+            "read",
+            {"path": " /home/user/data.json"},
+        )
+
+
+def test_path_parameter_rejects_separator_normalization():
+    """A Windows path cannot be rewritten with Unix separators."""
+    functions_def = cmm.FunctionsDefinition([
+        FunctionSchema(
+            name="read",
+            parameters={"path": Parameter(type="string")},
+        )
+    ])
+
+    with pytest.raises(ValueError, match="does not exactly match"):
+        cmm.validate_grounded_parameters(
+            functions_def,
+            r"Read C:\Users\john\config.ini",
+            "read",
+            {"path": "C:/Users/john/config.ini"},
+        )
+
+
+def test_path_parameter_accepts_exact_windows_path():
+    """An exact Windows path remains valid after JSON decoding."""
+    functions_def = cmm.FunctionsDefinition([
+        FunctionSchema(
+            name="read",
+            parameters={"path": Parameter(type="string")},
+        )
+    ])
+    path = r"C:\Users\john\config.ini"
+
+    cmm.validate_grounded_parameters(
+        functions_def,
+        f"Read {path}",
+        "read",
+        {"path": path},
+    )
+
+
 @patch("src.call_me_maybe.Small_LLM_Model")
 def test_load_model(mock_model_class):
     """Load model."""
@@ -417,4 +528,31 @@ def test_infer_number_regex_substitution_parameters():
         "source_string": "Hello 34 and 233",
         "regex": "[0-9]+",
         "replacement": "NUMBERS",
+    }
+
+
+def test_infer_posix_path_without_leading_space():
+    """Infer a Unix path exactly without surrounding request whitespace."""
+    prompt = "Read the file at /home/user/data.json with utf-8 encoding"
+
+    assert infer_string_parameters(prompt) == {
+        "path": "/home/user/data.json",
+    }
+
+
+def test_infer_windows_path_preserves_backslashes():
+    """Infer a Windows path without normalizing its separators."""
+    prompt = r"Read C:\Users\john\config.ini with latin-1 encoding"
+
+    assert infer_string_parameters(prompt) == {
+        "path": r"C:\Users\john\config.ini",
+    }
+
+
+def test_infer_quoted_path_preserves_spaces():
+    """Infer the entire path when spaces are protected by quotes."""
+    prompt = 'Read "/home/user/my data.json" with utf-8 encoding'
+
+    assert infer_string_parameters(prompt) == {
+        "path": "/home/user/my data.json",
     }

@@ -16,7 +16,11 @@ from src.generator import (
     generate_constrained_response,
     select_next_token,
 )
-from src.grounding import collect_prompt_values
+from src.grounding import (
+    collect_prompt_values,
+    contains_response_structure,
+    extract_path,
+)
 from src.token_vocabulary import TokenVocabulary
 import timeit
 
@@ -170,6 +174,26 @@ def validate_grounded_parameters(functions_def: FunctionsDefinition,
 
     for parameter_name, parameter_schema in schema.items():
         value = parameters[parameter_name]
+        if (
+            parameter_schema.type == "string"
+            and isinstance(value, str)
+            and contains_response_structure(value, prompt)
+        ):
+            raise ValueError(
+                f"String parameter {parameter_name!r} contains an embedded "
+                "response-structure fragment"
+            )
+        if parameter_name == "path":
+            prompt_path = extract_path(prompt)
+            if prompt_path is None:
+                raise ValueError(
+                    "Path parameter cannot be grounded in the user prompt"
+                )
+            if value != prompt_path:
+                raise ValueError(
+                    f"Path parameter {value!r} does not exactly match "
+                    f"the prompt path {prompt_path!r}"
+                )
         if parameter_schema.type in {"number", "integer"}:
             try:
                 number = Decimal(str(value))

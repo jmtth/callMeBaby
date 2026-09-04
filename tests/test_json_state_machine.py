@@ -262,6 +262,71 @@ def test_get_found_current_function_without_parameters():
     assert params_type is None
 
 
+def test_string_continuation_rejects_response_structure_fragment():
+    """String generation cannot append a leaked response-object key."""
+    model = FakeModel()
+    funcs = StringParamFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs),
+        token_to_id,
+    )
+    sm.current_text = '"hello {prompt'
+
+    assert not sm._is_safe_string_continuation(ord(":"))
+
+
+def test_string_continuation_rejects_prompt_word_absent_from_request():
+    """String generation cannot introduce the reserved prompt field name."""
+    model = FakeModel()
+    funcs = StringParamFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs),
+        token_to_id,
+        prompt='Format template: Say "hello" to {name}',
+    )
+    sm.current_text = '"Say hello with the promp'
+
+    assert not sm._is_safe_string_continuation(ord("t"))
+
+
+def test_string_continuation_allows_placeholder_from_request():
+    """A placeholder copied from the user request remains available."""
+    model = FakeModel()
+    funcs = StringParamFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs),
+        token_to_id,
+        prompt='Format template: Say "hello" to {name}',
+    )
+    sm.current_text = '"Say hello to {name'
+
+    assert sm._is_safe_string_continuation(ord("}"))
+
+
+def test_windows_path_is_json_escaped_before_string_generation():
+    """A grounded Windows path keeps its slashes in valid JSON form."""
+    model = FakeModel()
+    funcs = StringParamFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    prompt = r"Read C:\Users\john\config.ini"
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs),
+        token_to_id,
+        prompt=prompt,
+    )
+
+    assert sm.grounded_string_parameters == {
+        "path": r"C:\\Users\\john\\config.ini",
+    }
+
+
 def test_get_current_param_type_returns_none_for_out_of_range_index():
     """Get current param type returns none for out of range index."""
     model = FakeModel()
