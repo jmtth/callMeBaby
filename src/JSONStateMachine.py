@@ -5,8 +5,8 @@ from src.models import JSONState
 from src import utils
 from src.functions_manager import FunctionsDefinition
 from src.grounding import (
+    collect_prompt_string_candidates,
     contains_response_structure,
-    extract_path,
     validate_prompt_capacity,
 )
 from src.token_vocabulary import TokenModel, TokenVocabulary
@@ -45,12 +45,6 @@ class JSONStateMachine:
         self.functions_names = functions_def.list_functions_name()
         self.functions = functions_def
         self.prompt = prompt
-        prompt_path = extract_path(prompt)
-        self.grounded_path = (
-            json.dumps(prompt_path, ensure_ascii=False)[1:-1]
-            if prompt_path is not None
-            else None
-        )
         self.token_to_id = token_to_id
         self.vocabulary = vocabulary or TokenVocabulary(model, token_to_id)
 
@@ -90,6 +84,8 @@ class JSONStateMachine:
         self.total_params = 0  # Set when function name is known
         self.prompt_decimal_counts = utils.extract_decimal_counts(prompt)
         self.prompt_numbers = utils.extract_numbers(prompt)
+        self._prompt_string_candidates: dict[str | None, tuple[str, ...]] = {}
+        self._escaped_string_targets: dict[str | None, tuple[str, ...]] = {}
 
     def _get_all_token_ids(self) -> set[int]:
         """Return every unique token ID in the vocabulary."""
@@ -287,29 +283,63 @@ class JSONStateMachine:
         if utils.get_repeating_pattern(self.current_text):
             return quote_ids
 
-        param_name = self._get_current_param_name()
-        grounded_value = self.grounded_path if param_name == "path" else None
-        if grounded_value is not None:
-            generated = self.current_text[1:]
-            allowed_tokens = self.vocabulary.ids_continuing(
-                grounded_value,
-                generated,
-            )
-        else:
+        generated = self.current_text[1:]
+        targets = self._get_string_targets_for_current_param()
+        if not targets:
             allowed_tokens = self.vocabulary.json_string_content_ids()
+            safe_tokens = {
+                token_id for token_id in allowed_tokens
+                if self._is_safe_string_continuation(token_id)
+            }
+            safe_tokens.update(self._string_boundary_token_ids())
+            safe_tokens.update(quote_ids)
+            return safe_tokens
 
+        allowed_tokens = self.vocabulary.ids_continuing_any(
+            targets,
+            generated,
+        )
         safe_tokens = {
-            token_id
-            for token_id in allowed_tokens
+            token_id for token_id in allowed_tokens
             if self._is_safe_string_continuation(token_id)
         }
-        safe_tokens.update(self._string_boundary_token_ids())
-        safe_tokens.update(quote_ids)
-        if grounded_value is not None:
-            generated = self.current_text[1:]
-            if generated != grounded_value:
-                safe_tokens.difference_update(quote_ids)
+        if generated in targets:
+            safe_tokens.update(self._string_boundary_token_ids())
+            safe_tokens.update(quote_ids)
         return safe_tokens
+
+    def _get_string_targets_for_current_param(self) -> tuple[str, ...]:
+        """Return JSON-escaped prompt spans for the current string value."""
+        parameter_name = self._get_current_param_name()
+        if parameter_name not in self._escaped_string_targets:
+            candidates = self._get_string_candidates_for_current_param()
+            self._escaped_string_targets[parameter_name] = tuple(
+                json.dumps(value, ensure_ascii=False)[1:-1]
+                for value in candidates
+            )
+        return self._escaped_string_targets[parameter_name]
+
+    def _get_string_candidates_for_current_param(self) -> tuple[str, ...]:
+        """Return cached raw prompt spans for the current string parameter."""
+        parameter_name = self._get_current_param_name()
+        if parameter_name not in self._prompt_string_candidates:
+            self._prompt_string_candidates[parameter_name] = (
+                collect_prompt_string_candidates(
+                    self.prompt,
+                    parameter_name,
+                    MAX_STRING_LENGTH,
+                )
+            )
+        return self._prompt_string_candidates[parameter_name]
+
+    def _is_complete_grounded_string(self, value: str) -> bool:
+        """Return whether a JSON string decodes to an extracted prompt span."""
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return False
+        candidates = self._get_string_candidates_for_current_param()
+        return not candidates or decoded in candidates
 
     def _next_string_delimiter(self) -> str:
         """Return the JSON delimiter expected after the current string."""
@@ -343,6 +373,8 @@ class JSONStateMachine:
             except json.JSONDecodeError:
                 continue
             if len(self.current_text + content) > MAX_STRING_LENGTH:
+                continue
+            if not self._is_complete_grounded_string(candidate):
                 continue
             if contains_response_structure(candidate, self.prompt):
                 continue
@@ -565,6 +597,7 @@ class JSONStateMachine:
                 and len(self.current_text) > 1
                 and self.current_text.startswith('"')
                 and token_text == '"'
+                and self._is_complete_grounded_string(self.current_text)
             ):
                 self._complete_current_parameter()
                 self._update_state()

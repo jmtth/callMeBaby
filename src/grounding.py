@@ -1,4 +1,4 @@
-"""Checks that typed function arguments can be grounded in the user prompt."""
+"""Extract and validate function arguments grounded in the user prompt."""
 
 from __future__ import annotations
 
@@ -20,11 +20,10 @@ RESPONSE_FIELD_WORD_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PLACEHOLDER_PATTERN = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}")
-QUOTED_PATH_PATTERN = re.compile(
-    r"([\"'])(?P<path>(?:[A-Za-z]:[\\/]|/).*?)\1"
-)
-WINDOWS_PATH_PATTERN = re.compile(r"(?<!\w)[A-Za-z]:\\[^\s\"']+")
-POSIX_PATH_PATTERN = re.compile(r"(?<!\w)/[^\s\"']+")
+QUOTED_STRING_PATTERN = re.compile(r"([\"'])(?P<value>.+?)\1")
+TOKEN_PATTERN = re.compile(r"\S+")
+EDGE_PUNCTUATION = ",;:!?()[]"
+WINDOWS_PATH_TOKEN_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 def contains_response_structure(value: str, source_prompt: str = "") -> bool:
@@ -50,19 +49,6 @@ def contains_response_structure(value: str, source_prompt: str = "") -> bool:
     )
 
 
-def extract_path(prompt: str) -> str | None:
-    """Extract the first literal Unix or Windows path from a prompt."""
-    quoted = QUOTED_PATH_PATTERN.search(prompt)
-    if quoted:
-        return quoted.group("path")
-
-    for pattern in (WINDOWS_PATH_PATTERN, POSIX_PATH_PATTERN):
-        match = pattern.search(prompt)
-        if match:
-            return match.group(0)
-    return None
-
-
 @dataclass(frozen=True)
 class PromptValues:
     """Typed literals explicitly available in one user prompt."""
@@ -81,6 +67,68 @@ def collect_prompt_values(prompt: str) -> PromptValues:
         numbers=utils.extract_numbers(prompt),
         booleans=booleans,
     )
+
+
+def collect_prompt_string_candidates(
+    prompt: str,
+    parameter_name: str | None = None,
+    max_length: int = 80,
+) -> tuple[str, ...]:
+    """Return exact prompt spans suitable for an extractive string value.
+
+    Parameter labels provide a strong generic signal when present. A unique
+    path-shaped literal is also unambiguous. Unknown forms return no candidate
+    so transformations such as ``asterisks`` to ``*`` remain generative.
+
+    Args:
+        prompt: Original user request containing source values.
+        parameter_name: Optional schema parameter currently being generated.
+        max_length: Longest candidate accepted by the string FSM.
+
+    Returns:
+        Deduplicated candidates in their order of discovery.
+    """
+    if not prompt or max_length < 1:
+        return ()
+
+    if parameter_name:
+        label = re.escape(parameter_name).replace("_", r"[ _]")
+        bounded_label = rf"(?<![\w{{]){label}(?![\w}}])"
+        colon_match = re.search(
+            rf"{bounded_label}\s*:\s*(?P<value>.+?)\s*$",
+            prompt,
+            re.IGNORECASE,
+        )
+        if colon_match:
+            value = colon_match.group("value")
+            if len(value) <= max_length:
+                return (value,)
+
+        label_match = re.search(bounded_label, prompt, re.IGNORECASE)
+        if label_match:
+            suffix = prompt[label_match.end():]
+            quoted = QUOTED_STRING_PATTERN.search(suffix)
+            if quoted and not suffix[:quoted.start()].strip():
+                value = quoted.group("value")
+                if len(value) <= max_length:
+                    return (value,)
+
+            prefix_tokens = TOKEN_PATTERN.findall(prompt[:label_match.start()])
+            if prefix_tokens:
+                value = prefix_tokens[-1].strip(EDGE_PUNCTUATION + "\"'")
+                if value and len(value) <= max_length:
+                    return (value,)
+
+    path_candidates: list[str] = []
+    for raw_token in TOKEN_PATTERN.findall(prompt):
+        value = raw_token.strip(EDGE_PUNCTUATION + "\"'")
+        if (
+            value.startswith("/")
+            or WINDOWS_PATH_TOKEN_PATTERN.match(value)
+        ) and len(value) <= max_length:
+            path_candidates.append(value)
+
+    return tuple(dict.fromkeys(path_candidates))
 
 
 def validate_prompt_capacity(

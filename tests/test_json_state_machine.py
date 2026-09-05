@@ -335,24 +335,8 @@ def test_string_continuation_allows_placeholder_from_request():
     assert sm._is_safe_string_continuation(ord("}"))
 
 
-def test_windows_path_is_json_escaped_for_fsm():
-    """The dedicated path guard stores valid JSON string content."""
-    model = FakeModel()
-    funcs = StringParamFunctionsDef()
-    token_to_id = {chr(i): i for i in range(32, 128)}
-    prompt = r"Read C:\Users\john\config.ini"
-    sm = JSONStateMachine(
-        cast(Small_LLM_Model, model),
-        cast(FunctionsDefinition, funcs),
-        token_to_id,
-        prompt=prompt,
-    )
-
-    assert sm.grounded_path == r"C:\\Users\\john\\config.ini"
-
-
-def test_path_parameter_starts_with_exact_prompt_path():
-    """A path value cannot start with whitespace absent from its source."""
+def test_string_grounding_starts_only_at_prompt_span_boundaries():
+    """Grounded strings cannot drop a character inside a source token."""
     model = FakeModel()
     funcs = PathParamFunctionsDef()
     token_to_id = {chr(i): i for i in range(32, 128)}
@@ -370,7 +354,55 @@ def test_path_parameter_starts_with_exact_prompt_path():
     allowed = sm._allowed_tokens_for_param_string()
 
     assert ord("/") in allowed
-    assert ord(" ") not in allowed
+    assert ord("h") not in allowed
+
+
+def test_string_grounding_cannot_stop_inside_a_prompt_token():
+    """A source token must be copied completely before its string may close."""
+    model = FakeModel()
+    funcs = PathParamFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs),
+        token_to_id,
+        prompt="Read the file at /home/user/data.json",
+    )
+    sm.current_function_name = "fn_read"
+    sm.current_param_nb = 1
+    sm.state = JSONState.PARAM_VAL
+    sm.current_text = '"/home/user'
+
+    assert ord('"') not in sm._allowed_tokens_for_param_string()
+
+    sm.current_text = '"/home/user/data.json'
+
+    assert ord('"') in sm._allowed_tokens_for_param_string()
+
+
+def test_string_grounding_preserves_json_escaped_quotes():
+    """Embedded quotes are copied as content before the closing JSON quote."""
+    model = FakeModel()
+    funcs = StringParamFunctionsDef()
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(
+        cast(Small_LLM_Model, model),
+        cast(FunctionsDefinition, funcs),
+        token_to_id,
+        prompt='text: Say "hello" to {name}',
+    )
+    sm.current_function_name = "fn_echo"
+    sm.current_param_nb = 1
+    sm.state = JSONState.PARAM_VAL
+    sm.current_text = '"Say \\'
+
+    assert ord('"') in sm._allowed_tokens_for_param_string()
+    sm.update(ord('"'))
+    assert sm.state == JSONState.PARAM_VAL
+
+    sm.current_text = '"Say \\"hello\\" to {name}'
+
+    assert ord('"') in sm._allowed_tokens_for_param_string()
 
 
 def test_get_current_param_type_returns_none_for_out_of_range_index():

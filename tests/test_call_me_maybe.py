@@ -1,5 +1,5 @@
 import src.call_me_maybe as cmm
-from src.grounding import extract_path
+from src.grounding import collect_prompt_string_candidates
 from src.models import JSONState
 from unittest.mock import MagicMock, patch, mock_open
 import pytest
@@ -236,8 +236,8 @@ def test_string_parameter_allows_plain_structure_words():
     )
 
 
-def test_path_parameter_rejects_leading_space():
-    """A path parameter must exactly match the Unix path in the prompt."""
+def test_string_parameter_rejects_value_absent_from_prompt():
+    """Every grounded string must be an exact source span."""
     functions_def = cmm.FunctionsDefinition([
         FunctionSchema(
             name="read",
@@ -245,48 +245,69 @@ def test_path_parameter_rejects_leading_space():
         )
     ])
 
-    with pytest.raises(ValueError, match="does not exactly match"):
+    with pytest.raises(ValueError, match="was not extracted exactly"):
         cmm.validate_grounded_parameters(
             functions_def,
             "Read the file at /home/user/data.json",
             "read",
-            {"path": " /home/user/data.json"},
+            {"path": "generated/path.json"},
         )
 
 
-def test_path_parameter_rejects_separator_normalization():
-    """A Windows path cannot be rewritten with Unix separators."""
+def test_string_parameter_accepts_exact_source_span():
+    """Generic grounding accepts an exact string from the prompt."""
     functions_def = cmm.FunctionsDefinition([
         FunctionSchema(
             name="read",
             parameters={"path": Parameter(type="string")},
         )
     ])
-
-    with pytest.raises(ValueError, match="does not exactly match"):
-        cmm.validate_grounded_parameters(
-            functions_def,
-            r"Read C:\Users\john\config.ini",
-            "read",
-            {"path": "C:/Users/john/config.ini"},
-        )
-
-
-def test_path_parameter_accepts_exact_windows_path():
-    """An exact Windows path remains valid after JSON decoding."""
-    functions_def = cmm.FunctionsDefinition([
-        FunctionSchema(
-            name="read",
-            parameters={"path": Parameter(type="string")},
-        )
-    ])
-    path = r"C:\Users\john\config.ini"
 
     cmm.validate_grounded_parameters(
         functions_def,
-        f"Read {path}",
+        "Read the file at /home/user/data.json",
         "read",
-        {"path": path},
+        {"path": "/home/user/data.json"},
+    )
+
+
+def test_string_candidates_preserve_windows_path_verbatim():
+    """Candidate extraction never normalizes Windows separators."""
+    prompt = r"Read C:\Users\john\config.ini with latin-1 encoding"
+
+    candidates = collect_prompt_string_candidates(prompt, "path")
+
+    assert r"C:\Users\john\config.ini" in candidates
+    assert "C:/Users/john/config.ini" not in candidates
+
+
+def test_string_candidates_use_parameter_label_before_colon():
+    """A schema label followed by a colon identifies the complete tail."""
+    prompt = 'Format template: Say "hello" to {name}'
+
+    assert collect_prompt_string_candidates(prompt, "template") == (
+        'Say "hello" to {name}',
+    )
+
+
+def test_unknown_string_form_retains_generative_fallback():
+    """Derived strings remain possible when no exact source is inferable."""
+    functions_def = cmm.FunctionsDefinition([
+        FunctionSchema(
+            name="replace",
+            parameters={"replacement": Parameter(type="string")},
+        )
+    ])
+
+    assert collect_prompt_string_candidates(
+        "Replace all vowels with asterisks",
+        "replacement",
+    ) == ()
+    cmm.validate_grounded_parameters(
+        functions_def,
+        "Replace all vowels with asterisks",
+        "replace",
+        {"replacement": "*"},
     )
 
 
@@ -513,24 +534,3 @@ def test_generate_response_loads_model_if_none(mock_fsm_class,
     cmm.generate_response(fake_functions_def, "What is 1+1?")
 
     mock_load_model.assert_called_once()
-
-
-def test_extract_posix_path_without_leading_space():
-    """Extract a Unix path exactly without surrounding request whitespace."""
-    prompt = "Read the file at /home/user/data.json with utf-8 encoding"
-
-    assert extract_path(prompt) == "/home/user/data.json"
-
-
-def test_extract_windows_path_preserves_backslashes():
-    """Extract a Windows path without normalizing its separators."""
-    prompt = r"Read C:\Users\john\config.ini with latin-1 encoding"
-
-    assert extract_path(prompt) == r"C:\Users\john\config.ini"
-
-
-def test_extract_quoted_path_preserves_spaces():
-    """Extract the entire path when spaces are protected by quotes."""
-    prompt = 'Read "/home/user/my data.json" with utf-8 encoding'
-
-    assert extract_path(prompt) == "/home/user/my data.json"

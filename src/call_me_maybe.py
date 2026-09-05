@@ -15,9 +15,9 @@ from src.generator import (
     select_next_token,
 )
 from src.grounding import (
+    collect_prompt_string_candidates,
     collect_prompt_values,
     contains_response_structure,
-    extract_path,
 )
 from src.token_vocabulary import TokenVocabulary
 import timeit
@@ -188,9 +188,9 @@ def validate_grounded_parameters(functions_def: FunctionsDefinition,
                                  parameters: dict[str, object]) -> None:
     """Reject typed values that were invented instead of extracted.
 
-    Function selection remains an LLM decision. This validation only checks
-    that generated number and boolean arguments have explicit source values in
-    the user prompt.
+    Function selection remains an LLM decision. This validation checks exact
+    provenance for unambiguous extractive strings and for typed literals,
+    while leaving derived strings generative.
 
     Args:
         functions_def: Definitions loaded from the supplied JSON file.
@@ -199,7 +199,7 @@ def validate_grounded_parameters(functions_def: FunctionsDefinition,
         parameters: Validated generated parameter values.
 
     Raises:
-        ValueError: If a number or boolean value is absent from the prompt.
+        ValueError: If a grounded parameter value is absent from the prompt.
     """
     schema = functions_def.get_function_parameters_by_name(function_name)
     available = collect_prompt_values(prompt)
@@ -217,16 +217,15 @@ def validate_grounded_parameters(functions_def: FunctionsDefinition,
                 f"String parameter {parameter_name!r} contains an embedded "
                 "response-structure fragment"
             )
-        if parameter_name == "path":
-            prompt_path = extract_path(prompt)
-            if prompt_path is None:
+        if parameter_schema.type == "string" and isinstance(value, str):
+            candidates = collect_prompt_string_candidates(
+                prompt,
+                parameter_name,
+            )
+            if candidates and value not in candidates:
                 raise ValueError(
-                    "Path parameter cannot be grounded in the user prompt"
-                )
-            if value != prompt_path:
-                raise ValueError(
-                    f"Path parameter {value!r} does not exactly match "
-                    f"the prompt path {prompt_path!r}"
+                    f"String parameter {parameter_name!r}={value!r} "
+                    "was not extracted exactly from the user prompt"
                 )
         if parameter_schema.type in {"number", "integer"}:
             try:
