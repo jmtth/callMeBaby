@@ -87,9 +87,6 @@ def build_token_to_id(vocab: dict) -> dict[str, int]:
     raise ValueError("Unsupported vocab format for conversion")
 
 
-next_token_selection = select_next_token
-
-
 def load_model() -> tuple[Small_LLM_Model, dict[str, int]]:
     """Load the small language model and its token vocabulary.
 
@@ -284,7 +281,7 @@ def generate_response(functions_def: FunctionsDefinition,
         max_res_tokens,
         vocabulary=vocabulary,
         observer=observer,
-        token_selector=next_token_selection,
+        token_selector=select_next_token,
         fsm_factory=JSONStateMachine,
         selected_prompt_factory=lambda function_name: build_prompt(
             functions_def,

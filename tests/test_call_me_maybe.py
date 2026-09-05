@@ -79,18 +79,18 @@ def test_build_token_to_id_raises_on_unicode_digits():
         cmm.build_token_to_id({"²": "hello", "³": "world"})
 
 
-def test_next_token_selection():
+def test_select_next_token():
     """Next token selection."""
     fake_model = MagicMock()
     fake_model.get_logits_from_input_ids.return_value = [0.1, 0.2, 0.3, 0.4]
     fake_allowed_ids = {2, 3}
     fake_current_ids = [0, 1, 3]
-    new_token_id = cmm.next_token_selection(
+    new_token_id = cmm.select_next_token(
         fake_model, fake_current_ids, fake_allowed_ids)
     assert new_token_id == 3
 
 
-def test_next_token_selection_no_allowed_tokens():
+def test_select_next_token_no_allowed_tokens():
     """Next token selection no allowed tokens."""
     fake_model = MagicMock()
     fake_model.get_logits_from_input_ids.return_value = [0.1, 0.2, 0.3, 0.4]
@@ -98,7 +98,7 @@ def test_next_token_selection_no_allowed_tokens():
     fake_current_ids = [0, 1, 3]
     with pytest.raises(ValueError,
                        match="No allowed tokens available for selection"):
-        cmm.next_token_selection(
+        cmm.select_next_token(
             fake_model, fake_current_ids, fake_allowed_ids)
 
 
@@ -491,7 +491,7 @@ def test_generate_response_rejects_fixed_sequence_over_budget(mock_fsm_class):
     fake_fsm.update.assert_not_called()
 
 
-@patch("src.call_me_maybe.next_token_selection")
+@patch("src.call_me_maybe.select_next_token")
 @patch("src.call_me_maybe.JSONStateMachine")
 def test_generate_response_forces_single_allowed_token(mock_fsm_class,
                                                        mock_next_token):
