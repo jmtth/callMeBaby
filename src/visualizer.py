@@ -175,6 +175,7 @@ class GenerationVisualizer(App[None]):
         input_path: str | None,
         output_path: str | None,
         max_response_tokens: int = 512,
+        model: str = "Qwen/Qwen3-0.6B",
     ) -> None:
         """Initialize the dashboard with input, output, and token settings."""
         super().__init__()
@@ -184,6 +185,7 @@ class GenerationVisualizer(App[None]):
         self.max_response_tokens = max_response_tokens
         self._prompt_labels: list[Label] = []
         self._started_at = 0.0
+        self._model_name = model
 
     def compose(self) -> ComposeResult:
         """Compose the dashboard widgets."""
@@ -367,7 +369,7 @@ class GenerationVisualizer(App[None]):
             prompts = load_prompts(self.input_path)
             self.call_from_thread(self._populate_prompts, prompts)
             self.call_from_thread(self._set_status, "Chargement du modèle...")
-            llm = load_model()
+            llm = load_model(self._model_name)
             vocabulary = TokenVocabulary(llm[0], llm[1])
             results: list[dict[str, object]] = []
 
@@ -418,6 +420,12 @@ def run_visualizer(
     functions_path: str,
     input_path: str | None,
     output_path: str | None,
+    model: str = "Qwen/Qwen3-0.6B"
 ) -> None:
     """Launch the interactive generation visualizer."""
-    GenerationVisualizer(functions_path, input_path, output_path).run()
+    GenerationVisualizer(
+        functions_path,
+        input_path,
+        output_path,
+        model=model
+    ).run()

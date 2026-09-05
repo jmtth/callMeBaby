@@ -10,6 +10,8 @@ help:
 	@echo "  clean        Clean up temporary files"
 	@echo "  lint         Lint the project"
 	@echo "  lint-strict  Strict linting of the project"
+	@echo "  local        Set environment variables for offline mode"
+	@echo "  unset-local  Unset environment variables for offline mode"
 	@echo "  visualize    Open the token generation dashboard"
 
 install:
@@ -54,9 +56,11 @@ lint-strict:
 local:
 	export HF_HUB_OFFLINE=1
 	export TRANSFORMERS_OFFLINE=1
+	@echo "Setting environment variables for offline mode..."
 
 unset-local:
 	unset HF_HUB_OFFLINE
 	unset TRANSFORMERS_OFFLINE
+	@echo "Unsetting environment variables for offline mode..."
 
 .PHONY: install run visualize debug clean lint lint-strict local unset-local
