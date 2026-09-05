@@ -1,39 +1,17 @@
 import json
 from pathlib import Path
 from typing import Any, Literal
-
+from src.models.functions_definitions import (
+    FunctionSchema,
+    Parameter,
+    TYPE_MAPPING,
+)
 from pydantic import (
     BaseModel,
-    ConfigDict,
-    Field,
     ValidationError,
     create_model,
+    ConfigDict
 )
-
-ParameterType = Literal["number", "integer", "string", "boolean"]
-
-
-TYPE_MAPPING: dict[ParameterType, type] = {
-    "number": float,
-    "integer": int,
-    "string": str,
-    "boolean": bool,
-}
-
-
-class Parameter(BaseModel):
-    """Describe one function parameter."""
-    type: ParameterType = Field(..., description="Type of the parameter")
-
-
-class FunctionSchema(BaseModel):
-    """Describe a callable function and its parameters."""
-    name: str = Field(..., description="Name of the function")
-    description: str = Field("", description="Description of the function")
-    parameters: dict[str, Parameter] = Field(
-        default_factory=dict,
-        description="Parameters",
-    )
 
 
 class FunctionsDefinition:
@@ -110,11 +88,16 @@ class FunctionsDefinition:
         params = self.get_function_parameters_by_name(name)
         return len(params)
 
-    def get_functions_prompt(self) -> str:
-        """Format a concise function list for the model router prompt."""
+    def get_functions_prompt(self, function_name: str | None = None) -> str:
+        """Format all functions, or one selected function, for the prompt."""
+        functions = (
+            self.functions
+            if function_name is None
+            else [self.get_function_by_name(function_name)]
+        )
         return "\n".join(
             f"- {func.name}: {func.description}"
-            for func in self.functions
+            for func in functions
         )
 
     def get_output_function_model(self, name: str) -> type[BaseModel]:

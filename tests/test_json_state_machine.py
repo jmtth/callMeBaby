@@ -809,8 +809,10 @@ def test_empty_parameter_function_generates_complete_json_suffix():
         sm.update(ord(char))
 
     assert sm.current_function_name == "fn_ping"
+    assert sm.function_committed is False
     boundary_token = next(iter(sm.get_allowed_tokens()))
     sm.update(boundary_token)
+    assert sm.function_committed is True
     assert sm.state == JSONState.EMPTY_PARAMS
     assert model.decode(sm.get_target_tokens_for_current_state()) == (
         ', "parameters": {}}'
@@ -833,6 +835,7 @@ def test_function_name_prefix_can_continue_or_terminate():
         sm.update(ord(char))
 
     assert sm.state == JSONState.NAME_VAL
+    assert sm.function_committed is False
     assert ord("_") in sm.get_allowed_tokens()
     assert ord('"') in sm.get_allowed_tokens()
 
@@ -843,4 +846,5 @@ def test_function_name_prefix_can_continue_or_terminate():
 
     sm.update(boundary_id)
     assert sm.current_function_name == "get_weather"
+    assert sm.function_committed is True
     assert sm.state == JSONState.EMPTY_PARAMS

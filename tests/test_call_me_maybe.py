@@ -27,6 +27,17 @@ def test_build_prompt_includes_functions():
     assert "Add two numbers" in result
 
 
+def test_build_prompt_can_show_only_the_committed_function():
+    """Build prompt delegates selected-function filtering."""
+    functions_def = MagicMock()
+    functions_def.get_functions_prompt.return_value = "- fn_read: Read a file"
+
+    result = cmm.build_prompt(functions_def, "Read /tmp/a", "fn_read")
+
+    functions_def.get_functions_prompt.assert_called_once_with("fn_read")
+    assert "- fn_read: Read a file" in result
+
+
 def test_build_token_to_id_shapeA():
     """Build token to id shapea."""
 

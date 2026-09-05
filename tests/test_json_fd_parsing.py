@@ -166,3 +166,16 @@ def test_get_functions_prompt():
     )
     assert "Parameters:" not in prompt
     assert "type:" not in prompt
+
+
+def test_get_functions_prompt_can_keep_only_selected_function():
+    """Selected prompt excludes functions no longer under consideration."""
+    functions_def = FunctionsDefinition.from_json(
+        "./tests/data/valid_functions_definition.json")
+
+    prompt = functions_def.get_functions_prompt("fn_add_numbers")
+
+    assert prompt == (
+        "- fn_add_numbers: Add two numbers together and return their sum."
+    )
+    assert "fn_greet_user" not in prompt

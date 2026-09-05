@@ -43,7 +43,7 @@ clean:
 
 lint:
 	@echo "Linting CallMeBaby..."
-	uv run flake8 src tests vendor_llm_sdk/llm_sdk
+	uv run flake8 src tests
 	uv run mypy src
 
 lint-strict:

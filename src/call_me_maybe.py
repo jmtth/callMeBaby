@@ -4,11 +4,9 @@ from decimal import Decimal, InvalidOperation
 import json
 import sys
 from pathlib import Path
-from pydantic import ValidationError, BaseModel, Field
-
-
+from pydantic import ValidationError
+from src.models.prompt import PromptSchema
 from llm_sdk import Small_LLM_Model, logging
-
 from src.JSONStateMachine import JSONStateMachine
 from src.functions_manager import FunctionsDefinition
 from src.generator import (
@@ -23,27 +21,33 @@ from src.grounding import (
 )
 from src.token_vocabulary import TokenVocabulary
 import timeit
+from src.utils.logger import CallMeLogger
+
+logger = CallMeLogger()
 
 
-class PromptSchema(BaseModel):
-    """Describe a single function call request."""
-    prompt: str = Field(..., description="User request to process")
-
-
-def build_prompt(functions_def: FunctionsDefinition, prompt: str) -> str:
+def build_prompt(functions_def: FunctionsDefinition,
+                 prompt: str,
+                 function_name: str | None = None) -> str:
     """Build the model prompt from instructions, function schemas, and input.
 
     Args:
         functions_def: Function definitions available to the model.
         prompt: User request to append to the model instructions.
+        function_name: Optional committed function to show by itself.
 
     Returns:
         The complete prompt to send to the model.
     """
+    functions_prompt = (
+        functions_def.get_functions_prompt()
+        if function_name is None
+        else functions_def.get_functions_prompt(function_name)
+    )
     system_prompt = (
         "You are a function calling router. "
         "Available functions:\n"
-        f"{functions_def.get_functions_prompt()}\n. "
+        f"{functions_prompt}\n. "
         "Return a JSON object with the name of the function that matches "
         "the user request. The parameter VALUES must be extracted DIRECTLY "
         "and LITERALLY from the user prompt when possible."
@@ -143,14 +147,39 @@ def load_prompts(input_path: str | None) -> list[str]:
 
     try:
         data = json.loads(raw_text)
-        prompts = [PromptSchema(**prompt) for prompt in data]
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in {input_path}: {exc}") from exc
-    except Exception as exc:
-        raise ValueError(
-            f"Unexpected error loading prompts: {exc}"
-            ) from exc
-    return [prompt.prompt for prompt in prompts]
+
+    def parse_prompt_item(item: object) -> str:
+        """Normalize one supported prompt item to its string value."""
+        if isinstance(item, str):
+            return item
+        if isinstance(item, dict):
+            try:
+                return PromptSchema(**item).prompt
+            except ValidationError as exc:
+                raise ValueError(f"Invalid prompt object: {exc}") from exc
+        raise ValueError("List items must be strings or dicts")
+
+    if isinstance(data, str):
+        return [data]
+
+    if isinstance(data, dict):
+        if "prompt" in data:
+            return [parse_prompt_item(data)]
+        if "prompts" not in data:
+            raise ValueError(
+                "Prompt object must contain 'prompt' or 'prompts' key"
+            )
+        prompt_items = data["prompts"]
+        if not isinstance(prompt_items, list):
+            raise ValueError("'prompts' must contain a list")
+        return [parse_prompt_item(item) for item in prompt_items]
+
+    if isinstance(data, list):
+        return [parse_prompt_item(item) for item in data]
+
+    raise ValueError("JSON must be string, dict, or list")
 
 
 def validate_grounded_parameters(functions_def: FunctionsDefinition,
@@ -258,6 +287,11 @@ def generate_response(functions_def: FunctionsDefinition,
         observer=observer,
         token_selector=next_token_selection,
         fsm_factory=JSONStateMachine,
+        selected_prompt_factory=lambda function_name: build_prompt(
+            functions_def,
+            input_prompt,
+            function_name,
+        ),
     )
 
 
@@ -345,9 +379,9 @@ def run_cli(functions_definition_path: str,
               file=__import__("sys").stderr)
         raise
 
-    print("Loading model...")
+    logger.info("Loading model...")
     llm = load_model()
-    print("Model loaded.")
+    logger.info("Model loaded.")
     vocabulary = TokenVocabulary(llm[0], llm[1])
     results: list[dict[str, object]] = []
     start_time = timeit.default_timer()
@@ -358,7 +392,8 @@ def run_cli(functions_definition_path: str,
             llm=llm,
             vocabulary=vocabulary,
         )
-        print(f"Prompt: {prompt}\nResponse: {response}\n")
+        logger.debug(f"Prompt: {prompt}")
+        logger.debug(f"Response: {response}")
         validated_dict = validate_generated_response(
             functions_def,
             prompt,
@@ -371,7 +406,7 @@ def run_cli(functions_definition_path: str,
     seconds = (end_time - start_time) % 60
     message = f"Total execution time: {minutes:.0f}"
     message += f" minutes and {seconds:.0f} seconds"
-    print(message)
+    logger.info(message)
 
     if output_path is not None:
         output_file = Path(output_path)
@@ -381,9 +416,9 @@ def run_cli(functions_definition_path: str,
                                           ensure_ascii=False
                                           ), encoding="utf-8")
     elif len(results) == 1:
-        print(results[0])
+        logger.info(results[0])
     else:
-        print(json.dumps(results, indent=2, ensure_ascii=False))
+        logger.info(json.dumps(results, indent=2, ensure_ascii=False))
 
     return results
 
@@ -418,7 +453,15 @@ def main(argv: list[str] | None = None) -> int:
         default="Qwen/Qwen3-0.6B",
         help="Name of the small LLM model to use.",
     )
+    parser.add_argument(
+        "--loglevel",
+        default="INFO",
+        choices=["DEBUG", "INFO"],
+        help="Set the logging level.",
+    )
     args = parser.parse_args(argv)
+
+    logger.set_level(level=args.loglevel)
 
     try:
         if args.visualize:

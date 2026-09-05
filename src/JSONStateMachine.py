@@ -37,6 +37,7 @@ class JSONStateMachine:
         self.state = JSONState.START
         self.current_text = ""
         self.current_function_name = ""
+        self.function_committed = False
 
         # Keep every function from functions_definition.json available.
         # LLM logits choose the function; the FSM only constrains the choice
@@ -587,6 +588,7 @@ class JSONStateMachine:
             self.current_text,
         )
         self.current_function_name = self.current_text
+        self.function_committed = True
         self.current_parameter_name = None
         self.generated_param_names.clear()
         self.current_param_nb = 0

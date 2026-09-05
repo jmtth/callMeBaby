@@ -166,6 +166,7 @@ def generate_constrained_response(
         [GeneratorModel, list[int], set[int]], int
     ] = select_next_token,
     fsm_factory: Callable[..., JSONStateMachine] = JSONStateMachine,
+    selected_prompt_factory: Callable[[str], str] | None = None,
 ) -> str:
     """Generate one JSON response under state-machine constraints.
 
@@ -183,6 +184,8 @@ def generate_constrained_response(
         observer: Optional callback receiving generation snapshots.
         token_selector: Strategy used for ambiguous token choices.
         fsm_factory: Factory used to construct the JSON state machine.
+        selected_prompt_factory: Optional builder used to replace the model
+            prompt once the FSM has committed a function name.
 
     Returns:
         The decoded schema-constrained JSON response.
@@ -206,6 +209,24 @@ def generate_constrained_response(
     )
     generation_steps = 0
     max_generation_steps = max_res_tokens * 2 + 32
+    prompt_narrowed = False
+
+    def narrow_prompt_after_function_commit() -> None:
+        """Keep the response while replacing the model instruction prefix."""
+        nonlocal prompt_narrowed
+        if (
+            selected_prompt_factory is None
+            or prompt_narrowed
+            or getattr(fsm, "function_committed", False) is not True
+        ):
+            return
+        selected_prompt = selected_prompt_factory(
+            fsm.current_function_name
+        )
+        buffer.prompt_ids = normalize_encoded_ids(
+            model.encode(selected_prompt)
+        )
+        prompt_narrowed = True
 
     while fsm.state != JSONState.STOP:
         generation_steps += 1
@@ -223,6 +244,7 @@ def generate_constrained_response(
             buffer.append(target_ids)
             for token_id in target_ids:
                 fsm.update(token_id)
+            narrow_prompt_after_function_commit()
             if observer is not None:
                 observer(GenerationStep(
                     index=generation_steps,
@@ -265,6 +287,7 @@ def generate_constrained_response(
 
         if fsm.update(token_id):
             buffer.append(token_id)
+        narrow_prompt_after_function_commit()
         if observer is not None:
             observer(GenerationStep(
                 index=generation_steps,

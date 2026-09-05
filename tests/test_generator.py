@@ -18,8 +18,13 @@ from src.models import JSONState
 class CharacterModel:
     """Provide the CharacterModel test double."""
 
+    def __init__(self) -> None:
+        """Record encoded text so prompt replacement can be asserted."""
+        self.encoded_texts: list[str] = []
+
     def encode(self, text: str) -> list[list[int]]:
         """Encode text into token IDs for the test double."""
+        self.encoded_texts.append(text)
         return [[ord(character) for character in text]]
 
     def decode(self, ids: list[int]) -> str:
@@ -59,6 +64,38 @@ def test_complete_boolean_generation_pipeline():
         "name": "toggle",
         "parameters": {"enabled": True},
     }
+
+
+def test_prompt_is_narrowed_once_after_function_is_committed():
+    """Re-encode one selected-function prompt without losing response IDs."""
+    model = CharacterModel()
+    token_to_id = {chr(token_id): token_id for token_id in range(32, 128)}
+    functions = FunctionsDefinition([
+        FunctionSchema(
+            name="toggle",
+            parameters={"enabled": Parameter(type="boolean")},
+        )
+    ])
+    selected_names: list[str] = []
+
+    def build_selected_prompt(function_name: str) -> str:
+        selected_names.append(function_name)
+        return f"Only function: {function_name}"
+
+    response = generate_constrained_response(
+        model,
+        token_to_id,
+        functions,
+        prompt="All functions",
+        input_prompt="Set enabled to true",
+        max_res_tokens=128,
+        selected_prompt_factory=build_selected_prompt,
+    )
+
+    assert selected_names == ["toggle"]
+    assert model.encoded_texts.count("All functions") == 1
+    assert model.encoded_texts.count("Only function: toggle") == 1
+    assert json.loads(response)["parameters"] == {"enabled": True}
 
 
 def test_generation_observer_receives_decisions_and_final_json():
