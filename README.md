@@ -238,6 +238,8 @@ Expected output shape:
 - [Pydantic documentation](https://docs.pydantic.dev/)
 - [NumPy documentation](https://numpy.org/doc/)
 - [Python `json` documentation](https://docs.python.org/3/library/json.html)
+- [Textual documentation](https://textual.textualize.io/)
+- [ChatML format used in models like SmolLM2 and Qwen 2](https://huggingface.co/learn/llm-course/chapter11/2)
 - The project subject and the supplied `llm_sdk` package.
 
 AI was used as a review and learning aid to explain constrained-decoding state
