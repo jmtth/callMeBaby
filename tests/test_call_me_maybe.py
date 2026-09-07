@@ -4,6 +4,7 @@ from src.models import JSONState
 from unittest.mock import MagicMock, patch, mock_open
 import pytest
 import json
+from typing import cast
 
 from src.generator import GenerationBuffer, GenerationLimitError
 from src.functions_manager import FunctionSchema, Parameter
@@ -42,7 +43,8 @@ def test_build_token_to_id_shapeA():
     """Build token to id shapea."""
 
     vocab_shape = {"0": "hello", "1": "world", "2": "Ġhello", "3": "Ġworld"}
-    token_to_id = cmm.build_token_to_id(vocab_shape)
+    token_to_id = cmm.build_token_to_id(
+        cast(dict[str, str | int], vocab_shape))
     assert token_to_id == {"hello": 0, "world": 1, "Ġhello": 2, "Ġworld": 3}
 
 
@@ -50,7 +52,8 @@ def test_build_token_to_id_shapeB():
     """Build token to id shapeb."""
 
     vocab_shape = {"hello": 0, "world": 1, "Ġhello": 2, "Ġworld": 3}
-    token_to_id = cmm.build_token_to_id(vocab_shape)
+    token_to_id = cmm.build_token_to_id(
+        cast(dict[str, str | int], vocab_shape))
     assert token_to_id == {"hello": 0, "world": 1, "Ġhello": 2, "Ġworld": 3}
 
 
@@ -64,13 +67,15 @@ def test_build_token_to_id_raises_on_empty():
 def test_build_token_to_id_raises_on_bad_keys():
     """Build token to id raises on bad keys."""
     with pytest.raises(ValueError, match="Unsupported vocab format"):
-        cmm.build_token_to_id({"hello": None, "world": None})
+        cmm.build_token_to_id(
+            cast(dict[str, str | int], {"hello": None, "world": None}))
 
 
 def test_build_token_to_id_raises_on_bad_values():
     """Build token to id raises on bad values."""
     with pytest.raises(ValueError, match="Unsupported vocab format"):
-        cmm.build_token_to_id({"0": None, "1": None})
+        cmm.build_token_to_id(
+            cast(dict[str, str | int], {"0": None, "1": None}))
 
 
 def test_build_token_to_id_raises_on_unicode_digits():
@@ -148,6 +153,7 @@ def test_grounded_integer_parameter_rejects_invented_value():
     functions_def = cmm.FunctionsDefinition([
         FunctionSchema(
             name="even",
+            description="Check if a number is even.",
             parameters={"value": Parameter(type="integer")},
         )
     ])
@@ -184,6 +190,7 @@ def test_string_parameter_rejects_embedded_response_structure():
     functions_def = cmm.FunctionsDefinition([
         FunctionSchema(
             name="echo",
+            description="Echo the given text.",
             parameters={"text": Parameter(type="string")},
         )
     ])
@@ -202,6 +209,7 @@ def test_string_parameter_rejects_invented_field_word_and_placeholders():
     functions_def = cmm.FunctionsDefinition([
         FunctionSchema(
             name="format",
+            description="Format a template with placeholders.",
             parameters={"template": Parameter(type="string")},
         )
     ])
@@ -224,6 +232,7 @@ def test_string_parameter_allows_plain_structure_words():
     functions_def = cmm.FunctionsDefinition([
         FunctionSchema(
             name="echo",
+            description="Echo the given text.",
             parameters={"text": Parameter(type="string")},
         )
     ])
@@ -241,6 +250,7 @@ def test_string_parameter_rejects_value_absent_from_prompt():
     functions_def = cmm.FunctionsDefinition([
         FunctionSchema(
             name="read",
+            description="Read a file from the given path.",
             parameters={"path": Parameter(type="string")},
         )
     ])
@@ -259,6 +269,7 @@ def test_string_parameter_accepts_exact_source_span():
     functions_def = cmm.FunctionsDefinition([
         FunctionSchema(
             name="read",
+            description="Read a file from the given path.",
             parameters={"path": Parameter(type="string")},
         )
     ])
@@ -295,6 +306,7 @@ def test_unknown_string_form_retains_generative_fallback():
     functions_def = cmm.FunctionsDefinition([
         FunctionSchema(
             name="replace",
+            description="Replace all vowels with asterisks.",
             parameters={"replacement": Parameter(type="string")},
         )
     ])
