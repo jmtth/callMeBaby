@@ -3,6 +3,7 @@ from llm_sdk import Small_LLM_Model
 from src.functions_manager import FunctionsDefinition
 from src.models import JSONState
 from typing import cast
+import pytest
 
 
 class DummyFunctionsDef:
@@ -28,6 +29,10 @@ class StringParamFunctionsDef:
     def get_function_parameters_by_name(self, name: str):
         """Return parameters exposed by the test double."""
         return {"text": DummyParam("string")}
+
+    def get_nb_parameters(self, name: str):
+        """Return the test function parameter count."""
+        return 1
 
 
 class PathParamFunctionsDef:
@@ -880,3 +885,183 @@ def test_function_name_prefix_can_continue_or_terminate():
     assert sm.current_function_name == "get_weather"
     assert sm.function_committed is True
     assert sm.state == JSONState.EMPTY_PARAMS
+
+
+def test_complete_empty_fixed_sequence_advances_or_rejects_state():
+    """Only an empty encoded fixed sequence may be completed directly."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, DummyFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.targets[JSONState.START] = []
+    sm.current_text = "stale"
+    sm.progress = 4
+
+    sm.complete_empty_fixed_sequence()
+
+    assert sm.state == JSONState.PROMPT_KEY
+    assert sm.current_text == ""
+    assert sm.progress == 0
+
+    with pytest.raises(ValueError, match="not an empty fixed sequence"):
+        sm.complete_empty_fixed_sequence()
+
+    sm.state = JSONState.NAME_VAL
+    with pytest.raises(ValueError, match="not an empty fixed sequence"):
+        sm.complete_empty_fixed_sequence()
+
+
+def test_fixed_sequence_rejects_an_unexpected_token():
+    """A structural state rejects a token different from its target."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, DummyFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(model, funcs, token_to_id)
+
+    with pytest.raises(ValueError, match="Invalid token in fixed sequence"):
+        sm.update(ord("x"))
+
+
+def test_named_parameter_helpers_reject_an_unknown_name():
+    """Parameter metadata is unavailable for a name outside the schema."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.current_function_name = "fn_echo"
+    sm.current_parameter_name = "unknown"
+
+    assert sm._get_current_param_name() is None
+    assert sm._get_current_param_index() is None
+
+    sm.current_function_name = "unknown"
+    assert sm._get_remaining_parameter_names() == []
+
+
+def test_string_value_rejects_unquoted_and_oversized_content():
+    """String values must start with a quote and stay within the size cap."""
+    token_to_id = {'"': 10, "x": 20}
+    model = cast(Small_LLM_Model, MappedFakeModel(token_to_id))
+    funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = JSONState.PARAM_VAL
+    sm.current_function_name = "fn_echo"
+    sm.current_text = "unquoted"
+
+    assert sm.get_allowed_tokens() == set()
+
+    sm.current_text = '"' + "x" * 80
+    assert not sm._is_safe_string_continuation(20)
+
+
+def test_string_boundary_rejects_invalid_cross_state_tokens():
+    """A quote-spanning token must close valid grounded JSON at a delimiter."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(
+        model,
+        funcs,
+        token_to_id,
+        prompt="text: expected",
+    )
+    sm.current_function_name = "fn_echo"
+    sm.total_params = 1
+
+    sm.current_text = '"expected'
+    assert sm._split_string_boundary_token(r'\"}}') is None
+    assert sm._split_string_boundary_token('"wrong') is None
+
+    sm.current_text = "invalid"
+    assert sm._split_string_boundary_token('"}}') is None
+
+    sm.current_text = '"' + "x" * 80
+    assert sm._split_string_boundary_token('x"}}') is None
+
+    sm.current_text = '"different'
+    assert sm._split_string_boundary_token('"}}') is None
+
+
+def test_number_without_prompt_literal_requires_two_decimal_places():
+    """Fallback number generation terminates only after two decimals."""
+    token_to_id = {
+        "1": 11,
+        "2": 22,
+        ".": 33,
+        "e": 44,
+        ",": 55,
+        "}": 66,
+    }
+    model = cast(Small_LLM_Model, MappedFakeModel(token_to_id))
+    funcs = cast(FunctionsDefinition, NumberParamFunctionsDef())
+    sm = JSONStateMachine(model, funcs, token_to_id, prompt="no quantity")
+    sm.state = JSONState.PARAM_VAL
+    sm.current_function_name = "fn_add"
+
+    sm.current_text = "1.2"
+    assert sm.get_allowed_tokens().isdisjoint({55, 66})
+
+    sm.current_text = "1.22"
+    assert sm.get_allowed_tokens() == {55, 66}
+
+
+def test_function_with_parameters_commits_to_parameter_object():
+    """A selected non-empty function enters the parameters sequence."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, StringParamFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(model, funcs, token_to_id, prompt="text: hello")
+    sm.state = JSONState.NAME_VAL
+
+    for char in "fn_echo":
+        sm.update(ord(char))
+    sm.update(ord('"'))
+
+    assert sm.function_committed is True
+    assert sm.total_params == 1
+    assert sm.state == JSONState.PARAMS_KEY
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        (JSONState.PROMPT_KEY, JSONState.PROMPT_VAL),
+        (JSONState.PROMPT_VAL, JSONState.NAME_KEY),
+        (JSONState.NAME_KEY, JSONState.NAME_VAL),
+        (JSONState.EMPTY_PARAMS, JSONState.STOP),
+        (JSONState.NAME_VAL, JSONState.PARAMS_KEY),
+        (JSONState.PARAMS_KEY, JSONState.PARAM_NAME),
+        (JSONState.PARAM_NAME, JSONState.PARAM_COLON),
+        (JSONState.PARAM_COLON, JSONState.PARAM_VAL),
+    ],
+)
+def test_structural_state_transitions(state, expected):
+    """Each structural state advances to its documented successor."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, DummyFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.state = state
+
+    assert sm._update_state() == expected
+
+
+def test_terminal_states_restore_canonical_targets_and_reject_stop():
+    """Comma/end transitions restore targets while STOP cannot advance."""
+    model = cast(Small_LLM_Model, FakeModel())
+    funcs = cast(FunctionsDefinition, DummyFunctionsDef())
+    token_to_id = {chr(i): i for i in range(32, 128)}
+    sm = JSONStateMachine(model, funcs, token_to_id)
+    sm.targets[JSONState.PARAM_COMMA] = []
+    sm.state = JSONState.PARAM_COMMA
+
+    assert sm._update_state() == JSONState.PARAM_NAME
+    assert sm.targets[JSONState.PARAM_COMMA] == sm._canonical_param_comma
+
+    sm.targets[JSONState.END] = []
+    sm.state = JSONState.END
+    assert sm._update_state() == JSONState.STOP
+    assert sm.targets[JSONState.END] == sm._canonical_end
+
+    with pytest.raises(ValueError, match="Invalid state transition"):
+        sm._update_state()

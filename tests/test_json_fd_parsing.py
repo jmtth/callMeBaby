@@ -17,9 +17,14 @@ def test_main_runs_without_error():
     called = {}
 
     def fake_run_cli(functions_definition_path,
-                     input_path=None, output_path=None):
+                     input_path=None, output_path=None, model=None):
         """Record command-line arguments without running generation."""
-        called["args"] = (functions_definition_path, input_path, output_path)
+        called["args"] = (
+            functions_definition_path,
+            input_path,
+            output_path,
+            model,
+        )
         return []
 
     original_run_cli = call_me_maybe.run_cli
@@ -33,7 +38,33 @@ def test_main_runs_without_error():
         "data/input/functions_definition.json",
         "data/input/function_calling_tests.json",
         "data/output/function_calling_results.json",
+        "Qwen/Qwen3-0.6B",
     )
+
+
+def test_main_forwards_selected_model():
+    """Main forwards a selected evaluation model."""
+    from src import call_me_maybe
+
+    called = {}
+
+    def fake_run_cli(functions_definition_path,
+                     input_path=None, output_path=None, model=None):
+        """Record the model without running generation."""
+        called["model"] = model
+        return []
+
+    original_run_cli = call_me_maybe.run_cli
+    call_me_maybe.run_cli = fake_run_cli
+    try:
+        assert main([
+            "--model",
+            "HuggingFaceTB/SmolLM2-360M-Instruct",
+        ]) == 0
+    finally:
+        call_me_maybe.run_cli = original_run_cli
+
+    assert called["model"] == "HuggingFaceTB/SmolLM2-360M-Instruct"
 
 
 def test_main_with_nonexistent_functions_definition():

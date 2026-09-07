@@ -320,7 +320,7 @@ def test_load_model(mock_model_class):
 
     fake_vocab = {"hello": 0, "world": 1}
     with patch("builtins.open", mock_open(read_data=json.dumps(fake_vocab))):
-        model = cmm.load_model()
+        model = cmm.load_model(name="Qwen/Qwen3-0.6B")
 
     assert hasattr(model[0], "encode")
     assert callable(model[0].encode)
@@ -345,10 +345,13 @@ def test_load_model_linux(mock_system, mock_model_class):
     # Simulate vocab file
     fake_vocab = {"hello": 0, "world": 1}
     with patch("builtins.open", mock_open(read_data=json.dumps(fake_vocab))):
-        model, token_to_id = cmm.load_model()
+        model, token_to_id = cmm.load_model(name="Qwen/Qwen3-0.6B")
 
     # Verify device is cpu on Linux
-    mock_model_class.assert_called_once_with(device="cpu")
+    mock_model_class.assert_called_once_with(
+        device="cpu",
+        model_name="Qwen/Qwen3-0.6B",
+    )
     assert token_to_id == {"hello": 0, "world": 1}
 
 
@@ -365,10 +368,13 @@ def test_load_model_mac(mock_system, mock_model_class):
 
     fake_vocab = {"hello": 0, "world": 1}
     with patch("builtins.open", mock_open(read_data=json.dumps(fake_vocab))):
-        model, token_to_id = cmm.load_model()
+        model, token_to_id = cmm.load_model(name="Qwen/Qwen3-0.6B")
 
     # Verify device is mps on Mac
-    mock_model_class.assert_called_once_with(device="mps")
+    mock_model_class.assert_called_once_with(
+        device="mps",
+        model_name="Qwen/Qwen3-0.6B",
+    )
 
 
 @patch("src.call_me_maybe.Small_LLM_Model")
@@ -379,10 +385,13 @@ def test_load_model_fallback(mock_system, mock_model_class):
     mock_model_class.side_effect = Exception("No local files")
 
     with pytest.raises(SystemExit) as exc:
-        cmm.load_model()
+        cmm.load_model(name="Qwen/Qwen3-0.6B")
 
     assert exc.value.code == 1
-    mock_model_class.assert_called_once_with(device="cpu")
+    mock_model_class.assert_called_once_with(
+        device="cpu",
+        model_name="Qwen/Qwen3-0.6B",
+    )
 
 
 def make_fake_llm():
@@ -516,21 +525,3 @@ def test_generate_response_forces_single_allowed_token(mock_fsm_class,
 
     mock_next_token.assert_not_called()
     fake_fsm.update.assert_called_once_with(2)
-
-
-@patch("src.call_me_maybe.load_model")
-@patch("src.call_me_maybe.JSONStateMachine")
-def test_generate_response_loads_model_if_none(mock_fsm_class,
-                                               mock_load_model):
-    """Generate response loads model if none."""
-    fake_llm = make_fake_llm()
-    mock_load_model.return_value = fake_llm
-    fake_functions_def = MagicMock()
-
-    fake_fsm = MagicMock()
-    fake_fsm.state = JSONState.STOP
-    mock_fsm_class.return_value = fake_fsm
-
-    cmm.generate_response(fake_functions_def, "What is 1+1?")
-
-    mock_load_model.assert_called_once()

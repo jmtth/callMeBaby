@@ -22,6 +22,7 @@ from src.grounding import (
 from src.token_vocabulary import TokenVocabulary
 import timeit
 from src.utils.logger import CallMeLogger
+from src.utils.result_backup import save_results_to_json
 
 logger = CallMeLogger()
 
@@ -60,7 +61,7 @@ def build_prompt(functions_def: FunctionsDefinition,
     )
 
 
-def build_token_to_id(vocab: dict) -> dict[str, int]:
+def build_token_to_id(vocab: dict[str, str | int]) -> dict[str, int]:
     """Normalize a supported vocabulary shape to a token-to-ID mapping.
 
     Args:
@@ -75,9 +76,12 @@ def build_token_to_id(vocab: dict) -> dict[str, int]:
     if not vocab:
         raise ValueError("Vocabulary is empty, cannot build token_to_id")
     # Shape A: {"0": "!", "1": "the", ...}
-    if all(isinstance(k, str) and k.isdecimal() and isinstance(v, str)
-           for k, v in vocab.items()):
-        return {v: int(k) for k, v in vocab.items()}
+    if all(k.isdecimal() and isinstance(v, str) for k, v in vocab.items()):
+        token_to_id: dict[str, int] = {}
+        for k, v in vocab.items():
+            assert isinstance(v, str)  # for mypy
+            token_to_id[v] = int(k)
+        return token_to_id
 
     # Shape B: {"!": 0, "the": 1, ...}
     if all(isinstance(k, str) and isinstance(v, (int, str))
@@ -89,6 +93,9 @@ def build_token_to_id(vocab: dict) -> dict[str, int]:
 
 def load_model(name: str) -> tuple[Small_LLM_Model, dict[str, int]]:
     """Load the small language model and its token vocabulary.
+
+    Args:
+        name: Hugging Face model identifier passed to the model wrapper.
 
     Returns:
         The model and its normalized token-to-ID mapping.
@@ -404,17 +411,11 @@ def run_cli(functions_definition_path: str,
     logger.info(message)
 
     if output_path is not None:
-        output_file = Path(output_path)
-        output_file.parent.mkdir(parents=True, exist_ok=True)
-        output_file.write_text(json.dumps(results,
-                                          indent=2,
-                                          ensure_ascii=False
-                                          ), encoding="utf-8")
+        save_results_to_json(results, output_path)
     elif len(results) == 1:
         logger.info(results[0])
     else:
         logger.info(json.dumps(results, indent=2, ensure_ascii=False))
-
     return results
 
 
@@ -446,9 +447,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--model",
         default="Qwen/Qwen3-0.6B",
-        choices=["Qwen/Qwen3-0.6B",
-                 "distilbert/distilgpt2",
-                 "HuggingFaceTB/SmolLM2-360M-Instruct"],
+        choices=[
+            "Qwen/Qwen3-0.6B",
+            "distilbert/distilgpt2",
+            "HuggingFaceTB/SmolLM2-360M-Instruct",
+        ],
         help="Name of the small LLM model to use.",
     )
     parser.add_argument(

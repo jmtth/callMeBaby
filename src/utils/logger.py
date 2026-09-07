@@ -15,7 +15,7 @@ class ColorFormatter(logging.Formatter):
         logging.CRITICAL: RED,
     }
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         color = self.COLORS.get(record.levelno, "")
         prefix = (
             f"{self.formatTime(record, self.datefmt)} "
@@ -51,7 +51,7 @@ class CallMeLogger:
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
-    def set_level(self, level: str):
+    def set_level(self, level: str) -> None:
         """Set the logging level.
 
         Args:
@@ -75,5 +75,5 @@ class CallMeLogger:
     def error(self, msg: object) -> None:
         self.logger.error(msg)
 
-    def critical(self, msg: object):
+    def critical(self, msg: object) -> None:
         self.logger.critical(msg)

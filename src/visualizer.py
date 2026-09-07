@@ -21,8 +21,8 @@ from textual.widgets import (
     Static,
 )
 
+from src.functions_manager import FunctionsDefinition
 from src.call_me_maybe import (
-    FunctionsDefinition,
     generate_response,
     load_model,
     load_prompts,

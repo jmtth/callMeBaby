@@ -10,6 +10,7 @@ from src.grounding import (
     validate_prompt_capacity,
 )
 from src.token_vocabulary import TokenModel, TokenVocabulary
+from src.models.functions_definitions import Parameter
 
 
 MAX_STRING_LENGTH = 80
@@ -105,7 +106,7 @@ class JSONStateMachine:
             idx -= 1
         return idx
 
-    def _get_current_function_params(self) -> dict | None:
+    def _get_current_function_params(self) -> dict[str, Parameter] | None:
         """Return current function parameters, or `None` if unavailable."""
         if self.current_function_name not in self.functions_names:
             return None
@@ -522,12 +523,12 @@ class JSONStateMachine:
                 content, consumed_delimiter, delimiter = boundary
                 self.current_text += content + '"'
                 self._complete_current_parameter()
-                self._update_state()
+                next_state = self._update_state()
                 remaining_delimiter = delimiter[len(consumed_delimiter):]
                 if not remaining_delimiter:
-                    if self.state == JSONState.PARAM_COMMA:
+                    if next_state == JSONState.PARAM_COMMA:
                         self.state = JSONState.PARAM_NAME
-                    elif self.state == JSONState.END:
+                    elif next_state == JSONState.END:
                         self.state = JSONState.STOP
                 else:
                     self.targets[self.state] = self._encode_fixed_text(
@@ -638,7 +639,7 @@ class JSONStateMachine:
         self.current_param_nb = len(self.generated_param_names)
         self.current_parameter_name = None
 
-    def _update_state(self) -> None:
+    def _update_state(self) -> JSONState:
         """Advance to the next structural JSON generation state."""
         if self.state == JSONState.START:
             self.state = JSONState.PROMPT_KEY
@@ -673,3 +674,4 @@ class JSONStateMachine:
             self.state = JSONState.STOP
         else:
             raise ValueError("Invalid state transition")
+        return self.state
