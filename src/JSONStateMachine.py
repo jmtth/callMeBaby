@@ -106,7 +106,7 @@ class JSONStateMachine:
         return idx
 
     def _get_current_function_params(self) -> dict | None:
-        """Return current function parameters, or ``None`` if unavailable."""
+        """Return current function parameters, or `None` if unavailable."""
         if self.current_function_name not in self.functions_names:
             return None
         params = self.functions.get_function_parameters_by_name(

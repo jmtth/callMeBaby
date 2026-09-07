@@ -107,11 +107,11 @@ class FunctionsDefinition:
             name: Name of the function whose output schema is required.
 
         Returns:
-            A model containing ``prompt``, the literal function ``name``, and
-            a strict nested ``parameters`` model.
+            A model containing `prompt`, the literal function `name`, and
+            a strict nested `parameters` model.
 
         Raises:
-            ValueError: If no function with ``name`` exists.
+            ValueError: If no function with `name` exists.
         """
         func = self.get_function_by_name(name)
         params_fields: dict[str, Any] = {

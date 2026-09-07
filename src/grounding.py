@@ -78,7 +78,7 @@ def collect_prompt_string_candidates(
 
     Parameter labels provide a strong generic signal when present. A unique
     path-shaped literal is also unambiguous. Unknown forms return no candidate
-    so transformations such as ``asterisks`` to ``*`` remain generative.
+    so transformations such as `asterisks` to `*` remain generative.
 
     Args:
         prompt: Original user request containing source values.

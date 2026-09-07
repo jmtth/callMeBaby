@@ -18,7 +18,7 @@ class GeneratorModel(TokenModel, Protocol):
     """Public model operations required by the generator."""
 
     def get_logits_from_input_ids(self, input_ids: list[int]) -> list[float]:
-        """Return logits for the token following ``input_ids``."""
+        """Return logits for the token following `input_ids`."""
         ...
 
 

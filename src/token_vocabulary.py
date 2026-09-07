@@ -63,7 +63,7 @@ class TokenVocabulary:
         return set(self._exact_text_ids[expected_text])
 
     def ids_continuing(self, target: str, generated: str) -> set[int]:
-        """Return IDs that can extend ``generated`` towards ``target``."""
+        """Return IDs that can extend `generated` towards `target`."""
         if not target.startswith(generated):
             return set()
         remaining = target[len(generated):]

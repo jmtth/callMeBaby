@@ -113,6 +113,14 @@ The generation pipeline works as follows:
 11. The completed JSON is parsed and validated again with a dynamically created
    Pydantic output model.
 
+Tokenizer boundaries do not always match FSM boundaries: one token may contain
+the end of a string, its closing quote, and part of the following JSON
+delimiter. The FSM therefore keeps the original token ID intact in the model
+context while splitting its decoded text into logical effects, advancing
+through every covered state and emitting only the delimiter portion that
+remains. This prevents valid cross-state tokens from being rejected or JSON
+punctuation from being duplicated.
+
 Function selection is performed by the LLM logits. The FSM does not use
 keywords or hardcoded knowledge of the demonstration function names; it only
 restricts the output to functions present in the supplied definition file.
@@ -367,5 +375,4 @@ uv sync
   - They help with static type checking, code readability, and documentation.
   - Annotations can be used with tools like mypy to catch type errors before
     runtime.
-
 

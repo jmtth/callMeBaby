@@ -39,7 +39,7 @@ def is_valid_number_fragment(text: str) -> bool:
     """Return whether text can be a prefix of a supported number.
 
     Supported fragments use digits, at most one decimal point, an optional
-    lowercase exponent, and minus signs only at the start or after ``e``.
+    lowercase exponent, and minus signs only at the start or after `e`.
 
     Args:
         text: Candidate numeric prefix.

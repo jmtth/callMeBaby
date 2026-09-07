@@ -23,11 +23,11 @@ class Small_LLM_Model:
     model_name: str, default="Qwen/Qwen3-0.6B"
         Identifier of the model on the HF Hub.
     device: str | None, default=None
-        Computation device. If *None*, select ``mps`` on macOS, then ``cuda``
-        when available, and otherwise fall back to ``cpu``.
+        Computation device. If *None*, select `mps` on macOS, then `cuda`
+        when available, and otherwise fall back to `cpu`.
     dtype: torch.dtype | None, default=None
-        Numerical precision. GPU and MPS default to ``float16``; CPU keeps
-        ``float32`` for compatibility.
+        Numerical precision. GPU and MPS default to `float16`; CPU keeps
+        `float32` for compatibility.
     """
 
     def __init__(
@@ -91,7 +91,7 @@ class Small_LLM_Model:
         return self._tokenizer.decode(ids, skip_special_tokens=True)
 
     def get_logits_from_input_ids(self, input_ids: list[int]) -> list[float]:
-        """Return raw logits for the token following ``input_ids``."""
+        """Return raw logits for the token following `input_ids`."""
         input_tensor = torch.tensor(
             [input_ids],
             device=self._device,
